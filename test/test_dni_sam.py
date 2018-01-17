@@ -72,7 +72,7 @@ def test_rnn_1():
   output = output.transpose(0, 1)
 
   loss = criterion((output), target_output)
-  # loss.backward()
+  loss.backward()
 
   T.nn.utils.clip_grad_norm(rnn.parameters(), clip)
   optimizer.step()
