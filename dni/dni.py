@@ -89,6 +89,7 @@ class DNI(nn.Module):
           hidden_size=self.hidden_size,
           output_size=output.size(-1)
         )
+        print('DNI Network created ', self.dni_networks[id(module)], ' for module ', module)
         self.dni_networks_data[id(module)] = {}
         # the gradient module's (DNI network) optimizer
         self.dni_networks_data[id(module)]['grad_optim'] = \
@@ -103,7 +104,7 @@ class DNI(nn.Module):
       hx = self.dni_networks_data[id(module)]['hidden'] if 'hidden' in self.dni_networks_data[id(module)] else None
 
       # pass through the DNI network, get updated gradients for the host network
-      grad, hx = self.dni_networks[id(module)](output, None)
+      grad, hx = self.dni_networks[id(module)](output, hx)
       # backprop with generated gradients
       self.backward_lock = True
       output.backward(grad.detach())

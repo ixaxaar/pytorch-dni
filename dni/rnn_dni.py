@@ -57,7 +57,12 @@ class RNN_DNI(nn.Module):
     self.output_weights = nn.Linear(self.hidden_size, self.output_size)
 
   def forward(self, input, hidden=None):
+    is_2d = len(list(input.size())) == 2
+    if is_2d: input = input.unsqueeze(1)
+
     output, hidden = self.rnn(input, hidden)
     output = self.output_weights(output)
+
+    if is_2d: output = output.squeeze()
 
     return output, hidden
