@@ -121,6 +121,7 @@ def test_rnn_1():
 #   )
 
 #   optimizer = optim.Adam(rnn.parameters(), lr=lr)
+#   rnn = DNI(rnn, optim=optimizer)
 #   optimizer.zero_grad()
 
 #   input_data, target_output = generate_data(batch_size, length, input_size, cuda)
@@ -177,6 +178,7 @@ def test_rnn_1():
 #   )
 
 #   optimizer = optim.Adam(rnn.parameters(), lr=lr)
+#   rnn = DNI(rnn, optim=optimizer)
 #   optimizer.zero_grad()
 
 #   input_data, target_output = generate_data(batch_size, length, input_size, cuda)
