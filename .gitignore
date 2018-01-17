@@ -17,6 +17,6 @@ __pycache__/
 *.log
 .cache/
 dist/
-dnc.egg-info/
 tasks/checkpoints/
 faiss/
+pytorch_dni.egg-info/
