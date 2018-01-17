@@ -47,6 +47,8 @@ class DNI(nn.Module):
     # register forward and backward hooks to all leaf modules in the network
     self.register_forward(self.network, self._forward_update_hook)
     self.register_backward(self.network, self._backward_update_hook)
+    log.debug(self.network)
+    log.debug("=============== Hooks registered =====================")
 
   def register_forward(self, network, hook):
     for module in network.modules():
@@ -95,7 +97,7 @@ class DNI(nn.Module):
           hidden_size=self.hidden_size,
           output_size=output.size(-1)
         )
-        log.debug('DNI Network created ' + str(self.dni_networks[id(module)]) + ' for module ' + str(module))
+        # log.debug('DNI Network created ' + str(self.dni_networks[id(module)]) + ' for module ' + str(module))
         self.dni_networks_data[id(module)] = {}
         # the gradient module's (DNI network) optimizer
         self.dni_networks_data[id(module)]['grad_optim'] = \
@@ -103,6 +105,8 @@ class DNI(nn.Module):
         # the network module's optimizer
         self.dni_networks_data[id(module)]['optim'] = \
           self.get_optim(module.parameters(), otype=self.optim)
+        self.dni_networks_data[id(module)]['grad']= []
+        self.dni_networks_data[id(module)]['outputs']= []
 
       self.dni_networks_data[id(module)]['optim'].zero_grad()
 
@@ -110,9 +114,7 @@ class DNI(nn.Module):
       hx = self.dni_networks_data[id(module)]['hidden'] if 'hidden' in self.dni_networks_data[id(module)] else None
 
       # pass through the DNI network, get updated gradients for the host network
-      self.forward_lock = True
       grad, hx = self.dni_networks[id(module)](output, hx)
-      self.forward_lock = False
 
       # backprop with generated gradients
       self.backward_lock = True
@@ -125,7 +127,7 @@ class DNI(nn.Module):
 
       # store the hidden state and gradient
       self.dni_networks_data[id(module)]['hidden'] = hx
-      self.dni_networks_data[id(module)]['grad'] = grad
+      self.dni_networks_data[id(module)]['grad'].append(grad)
     return hook
 
   def _backward_update_hook(self):
@@ -137,27 +139,31 @@ class DNI(nn.Module):
       log.debug('Backward hook called for ' + str(module))
       self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
 
+      predicted_grad = self.dni_networks_data[id(module)]['grad'].pop()
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
-      predicted_grad = self.dni_networks_data[id(module)]['grad']
       loss = self.grad_loss(predicted_grad, grad_output[0])
 
-      self.backward_lock = True
-      loss.backward()
+      loss.backward(retain_graph=True)
       self.dni_networks_data[id(module)]['grad_optim'].step()
-      self.backward_lock = False
     return hook
 
   def forward(self, *args, **kwargs):
+    log.debug("=============== Forward pass starting =====================")
     ret = self.network(*args, **kwargs)
 
     # since the DNI net gets created after the frist forward pass, create its sequential and optimizer here
     if not self.dni_network:
       self.dni_network = nn.Sequential(*list(self.dni_networks.values()))
       self.dni_optimizer = self.get_optim(self.dni_network.parameters(), otype=self.optim, lr=self.lr)
+
+    log.debug("=============== Forward pass done =====================")
     return ret
 
   def backward(self, *args, **kwargs):
-    return self.network.backward(*args, **kwargs)
+    log.debug("=============== Backward pass starting =====================")
+    ret = self.network.backward(*args, **kwargs)
+    log.debug("=============== Backward pass done =====================")
+    return ret
 
   def get_optim(self, parameters, otype="adam", lr=0.001):
     if type(otype) is str:
