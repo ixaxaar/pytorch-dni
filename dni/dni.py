@@ -11,9 +11,19 @@ from .rnn_dni import RNN_DNI
 from .output_format import *
 from .util import *
 
+
 class DNI(nn.Module):
 
-  def __init__(self, network, dni_network=None, optim=None, grad_optim='adam', grad_lr=0.001, hidden_size=None):
+  def __init__(
+      self,
+      network,
+      dni_network=None,
+      optim=None,
+      grad_optim='adam',
+      grad_lr=0.001,
+      hidden_size=None,
+      gpu_id=-1
+  ):
     super(DNI, self).__init__()
 
     # the DNI network generator
@@ -22,7 +32,7 @@ class DNI(nn.Module):
     # the network and optimizer for the entire network
     self.network = network
     self.network_optimizer = \
-      optim if optim is not None else self.get_optim(self.network.parameters(), grad_optim, grad_lr)
+        optim if optim is not None else self.get_optim(self.network.parameters(), grad_optim, grad_lr)
 
     # optim params for the DNI networks' optimizers
     self.grad_optim = grad_optim
@@ -44,6 +54,8 @@ class DNI(nn.Module):
     # hidden size of the DNI network
     self.hidden_size = 57 if hidden_size is None else hidden_size
 
+    self.gpu_id = gpu_id
+
     # register forward and backward hooks to all leaf modules in the network
     self.register_forward(self.network, self._forward_update_hook)
     self.register_backward(self.network, self._backward_update_hook)
@@ -54,29 +66,31 @@ class DNI(nn.Module):
     for module in network.modules():
       # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
       l = 0
-      for x in module.children(): l += 1
-      p = sum([ 1 for x in module.parameters() ])
+      for x in module.children():
+        l += 1
+      p = sum([1 for x in module.parameters()])
 
       if l == 0 and p > 0:
         # register forward hooks
         h = hook()
         log.debug('Registering forward hooks for ' + str(module))
         module.register_forward_hook(h)
-        self.forward_hooks += [{ "name": str(module), "id": id(module), "hook": h }]
+        self.forward_hooks += [{"name": str(module), "id": id(module), "hook": h}]
 
   def register_backward(self, network, hook):
     for module in network.modules():
       # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
       l = 0
-      for x in module.children(): l += 1
-      p = sum([ 1 for x in module.parameters() ])
+      for x in module.children():
+        l += 1
+      p = sum([1 for x in module.parameters()])
 
       if l == 0 and p > 0:
         # register backward hooks
         h = hook()
         log.debug('Registering backward hooks for ' + str(module))
         module.register_backward_hook(h)
-        self.backward_hooks += [{ "name": str(module), "id": id(module), "hook": h }]
+        self.backward_hooks += [{"name": str(module), "id": id(module), "hook": h}]
 
   def _forward_update_hook(self):
     def hook(module, input, output):
@@ -92,21 +106,27 @@ class DNI(nn.Module):
 
       # create DNI networks and optimizers if they dont exist (for this module)
       if id(module) not in list(self.dni_networks.keys()):
+        # the DNI network
         self.dni_networks[id(module)] = self.dni_network(
-          input_size=output.size(-1),
-          hidden_size=self.hidden_size,
-          output_size=output.size(-1)
+            input_size=output.size(-1),
+            hidden_size=self.hidden_size,
+            output_size=output.size(-1)
         )
-        # log.debug('DNI Network created ' + str(self.dni_networks[id(module)]) + ' for module ' + str(module))
+
         self.dni_networks_data[id(module)] = {}
         # the gradient module's (DNI network) optimizer
         self.dni_networks_data[id(module)]['grad_optim'] = \
-          self.get_optim(self.dni_networks[id(module)].parameters(), otype=self.grad_optim)
+            self.get_optim(self.dni_networks[id(module)].parameters(), otype=self.grad_optim)
+
         # the network module's optimizer
         self.dni_networks_data[id(module)]['optim'] = \
-          self.get_optim(module.parameters(), otype=self.optim)
-        self.dni_networks_data[id(module)]['grad']= []
-        self.dni_networks_data[id(module)]['outputs']= []
+            self.get_optim(module.parameters(), otype=self.optim)
+
+        self.dni_networks_data[id(module)]['grad'] = []
+        self.dni_networks_data[id(module)]['outputs'] = []
+
+        if self.gpu_id != -1:
+          self.dni_networks[id(module)] = self.dni_networks[id(module)].cuda(self.gpu_id)
 
       self.dni_networks_data[id(module)]['optim'].zero_grad()
 
@@ -141,11 +161,16 @@ class DNI(nn.Module):
 
       predicted_grad = self.dni_networks_data[id(module)]['grad'].pop()
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
-      loss = self.grad_loss(predicted_grad, grad_output[0])
+      loss = self.grad_loss(predicted_grad, grad_output[0].detach())
 
       loss.backward(retain_graph=True)
       self.dni_networks_data[id(module)]['grad_optim'].step()
     return hook
+
+  def cuda(self, device_id):
+    self.network.cuda(device_id)
+    self.gpu_id = device_id
+    return self
 
   def forward(self, *args, **kwargs):
     log.debug("=============== Forward pass starting =====================")
@@ -155,6 +180,8 @@ class DNI(nn.Module):
     if not self.dni_network:
       self.dni_network = nn.Sequential(*list(self.dni_networks.values()))
       self.dni_optimizer = self.get_optim(self.dni_network.parameters(), otype=self.optim, lr=self.lr)
+      if self.gpu_id != -1:
+        self.dni_network = self.dni_network.cuda(self.gpu_id)
 
     log.debug("=============== Forward pass done =====================")
     return ret
@@ -168,18 +195,16 @@ class DNI(nn.Module):
   def get_optim(self, parameters, otype="adam", lr=0.001):
     if type(otype) is str:
       if otype == 'adam':
-        optimizer = optim.Adam(parameters, lr=lr, eps=1e-9, betas=[0.9, 0.98]) # 0.0001
+        optimizer = optim.Adam(parameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
       elif otype == 'adamax':
-        optimizer = optim.Adamax(selfparameters, lr=lr, eps=1e-9, betas=[0.9, 0.98]) # 0.0001
+        optimizer = optim.Adamax(selfparameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
       elif otype == 'rmsprop':
-        optimizer = optim.RMSprop(parameters, lr=lr, momentum=0.9, eps=1e-10) # 0.0001
+        optimizer = optim.RMSprop(parameters, lr=lr, momentum=0.9, eps=1e-10)  # 0.0001
       elif otype == 'sgd':
-        optimizer = optim.SGD(parameters, lr=lr) # 0.01
+        optimizer = optim.SGD(parameters, lr=lr)  # 0.01
       elif otype == 'adagrad':
         optimizer = optim.Adagrad(parameters, lr=lr)
       elif otype == 'adadelta':
         optimizer = optim.Adadelta(parameters, lr=lr)
 
     return optimizer
-
-
