@@ -5,10 +5,12 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
-  - [Install](#install)
-    - [From source](#from-source)
-  - [Architecure](#architecure)
-  - [Usage](#usage)
+
+- [Install](#install)
+  - [From source](#from-source)
+- [Architecure](#architecure)
+- [Usage](#usage)
+- [Tasks](#tasks)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -56,4 +58,6 @@ for e in range(epoch):
 ...
 ```
 
+## Tasks
 
+The tasks included in this project are the same as those in [pytorch-dnc](https://github.com/ixaxaar/pytorch-dnc#tasks), except that they're trained here using DNI.
