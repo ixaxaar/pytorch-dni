@@ -41,5 +41,5 @@ def test_dni():
 
   net = DNI(net)
   out = net(var(input), None)
-  # out.backward()
+  out.backward()
 
