@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn as nn
 
-from .rnn_dni import RNN_DNI
+from .linear_dni import Linear_DNI
 from .output_format import *
 from .util import *
 
@@ -27,7 +27,7 @@ class DNI(nn.Module):
     super(DNI, self).__init__()
 
     # the DNI network generator
-    self.dni_network = RNN_DNI if dni_network is None else dni_network
+    self.dni_network = Linear_DNI if dni_network is None else dni_network
 
     # the network and optimizer for the entire network
     self.network = network
@@ -35,8 +35,9 @@ class DNI(nn.Module):
         optim if optim is not None else self.get_optim(self.network.parameters(), grad_optim, grad_lr)
 
     # optim params for the DNI networks' optimizers
-    self.grad_optim = grad_optim
-    self.lr = grad_lr
+    self.grad_optim = grad_optim if optim is None else optim.__class__.__name__.lower()
+    self.lr = grad_lr if optim is None else optim.defaults['lr']
+    # criterion for the grad estimator loss
     self.grad_loss = nn.MSELoss()
     # optim params for the network's per-layer optimizers
     self.optim = str(self.network_optimizer.__class__.__name__).lower()
@@ -52,7 +53,7 @@ class DNI(nn.Module):
     self.forward_lock = False
 
     # hidden size of the DNI network
-    self.hidden_size = 57 if hidden_size is None else hidden_size
+    self.hidden_size = 10 if hidden_size is None else hidden_size
 
     self.gpu_id = gpu_id
 
@@ -101,8 +102,7 @@ class DNI(nn.Module):
       log.debug('Forward hook called for ' + str(module))
 
       # get the grad-detached output for this module
-      input = detach_all(input)
-      output = format(module.forward(*input), module)
+      output = var(detach_all(format(output, module)).data, requires_grad=True)
 
       # create DNI networks and optimizers if they dont exist (for this module)
       if id(module) not in list(self.dni_networks.keys()):
@@ -116,19 +116,23 @@ class DNI(nn.Module):
         self.dni_networks_data[id(module)] = {}
         # the gradient module's (DNI network) optimizer
         self.dni_networks_data[id(module)]['grad_optim'] = \
-            self.get_optim(self.dni_networks[id(module)].parameters(), otype=self.grad_optim)
+            self.get_optim(self.dni_networks[id(module)].parameters(), otype=self.grad_optim, lr=self.lr)
 
         # the network module's optimizer
         self.dni_networks_data[id(module)]['optim'] = \
-            self.get_optim(module.parameters(), otype=self.optim)
+            self.get_optim(module.parameters(), otype=self.optim, lr=self.lr)
 
+        # store the DNI outputs (synthetic gradients) here for calculating loss during backprop
         self.dni_networks_data[id(module)]['grad'] = []
-        self.dni_networks_data[id(module)]['outputs'] = []
 
         if self.gpu_id != -1:
           self.dni_networks[id(module)] = self.dni_networks[id(module)].cuda(self.gpu_id)
 
+      # # This module's parameters do not get updated outside of this block
+      # for p in module.parameters(): p.requires_grad = True
+
       self.dni_networks_data[id(module)]['optim'].zero_grad()
+      self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
 
       # get the DNI network's hidden state
       hx = self.dni_networks_data[id(module)]['hidden'] if 'hidden' in self.dni_networks_data[id(module)] else None
@@ -148,6 +152,9 @@ class DNI(nn.Module):
       # store the hidden state and gradient
       self.dni_networks_data[id(module)]['hidden'] = hx
       self.dni_networks_data[id(module)]['grad'].append(grad)
+
+      # # This module's parameters do not get updated outside of this block
+      # for p in module.parameters(): p.requires_grad = False
     return hook
 
   def _backward_update_hook(self):
@@ -157,7 +164,6 @@ class DNI(nn.Module):
         return
 
       log.debug('Backward hook called for ' + str(module))
-      self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
 
       predicted_grad = self.dni_networks_data[id(module)]['grad'].pop()
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
@@ -175,14 +181,6 @@ class DNI(nn.Module):
   def forward(self, *args, **kwargs):
     log.debug("=============== Forward pass starting =====================")
     ret = self.network(*args, **kwargs)
-
-    # since the DNI net gets created after the frist forward pass, create its sequential and optimizer here
-    if not self.dni_network:
-      self.dni_network = nn.Sequential(*list(self.dni_networks.values()))
-      self.dni_optimizer = self.get_optim(self.dni_network.parameters(), otype=self.optim, lr=self.lr)
-      if self.gpu_id != -1:
-        self.dni_network = self.dni_network.cuda(self.gpu_id)
-
     log.debug("=============== Forward pass done =====================")
     return ret
 
@@ -195,11 +193,11 @@ class DNI(nn.Module):
   def get_optim(self, parameters, otype="adam", lr=0.001):
     if type(otype) is str:
       if otype == 'adam':
-        optimizer = optim.Adam(parameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
+        optimizer = optim.Adam(parameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])
       elif otype == 'adamax':
-        optimizer = optim.Adamax(selfparameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
+        optimizer = optim.Adamax(selfparameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])
       elif otype == 'rmsprop':
-        optimizer = optim.RMSprop(parameters, lr=lr, momentum=0.9, eps=1e-10)  # 0.0001
+        optimizer = optim.RMSprop(parameters, lr=lr, momentum=0.9, eps=1e-10)
       elif otype == 'sgd':
         optimizer = optim.SGD(parameters, lr=lr)  # 0.01
       elif otype == 'adagrad':

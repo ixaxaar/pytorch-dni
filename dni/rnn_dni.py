@@ -4,22 +4,24 @@
 import torch as T
 import torch.nn as nn
 
+from .dni_network import DNI_Network
 
-class RNN_DNI(nn.Module):
+
+class RNN_DNI(DNI_Network):
 
   def __init__(
       self,
       input_size,
       hidden_size,
       output_size,
-      num_layers=2,
+      num_layers=1,
       batch_first=True,
-      dropout=0.2,
+      dropout=0,
       bias=True,
       kind='lstm'
   ):
 
-    super(RNN_DNI, self).__init__()
+    super(RNN_DNI, self).__init__(input_size, hidden_size, output_size)
     self.input_size = input_size
     self.hidden_size = hidden_size
     self.output_size = output_size
@@ -58,11 +60,13 @@ class RNN_DNI(nn.Module):
 
   def forward(self, input, hidden=None):
     is_2d = len(list(input.size())) == 2
-    if is_2d: input = input.unsqueeze(1)
+    if is_2d:
+      input = input.unsqueeze(1)
 
     output, hidden = self.rnn(input, hidden)
     output = self.output_weights(output)
 
-    if is_2d: output = output.squeeze()
+    if is_2d:
+      output = output.squeeze()
 
     return output, hidden

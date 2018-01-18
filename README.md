@@ -58,6 +58,36 @@ for e in range(epoch):
 ...
 ```
 
+## DNI Networks
+
+This package ships with 3 types of DNI networks:
+
+- RNN_DNI: stacked `LSTM`s, `GRU`s or `RNN`s
+- Linear_DNI: 2-layer `Linear` modules
+- Linear_Sigmoid_DNI: 2-layer `Linear` followed by `Sigmoid`
+
+## Custom DNI Networks
+
+Custom DNI nets can be created using the `DNI_Network` interface:
+
+```python
+class MyDNI(DNI_Network):
+  def __init__(self, input_size, hidden_size, output_size, **kwargs):
+    super(MyDNI, self).__init__(input_size, hidden_size, output_size)
+
+    self.net = { ... your custom net }
+    ...
+
+  def forward(self, input, hidden):
+    return self.net(input), None # return (output, hidden), hidden can be None
+
+```
+
 ## Tasks
 
 The tasks included in this project are the same as those in [pytorch-dnc](https://github.com/ixaxaar/pytorch-dnc#tasks), except that they're trained here using DNI.
+
+## Notable stuff
+
+- Using a linear SG module makes the implicit assumption that loss is a quadratic function of the activations
+- For best performance one should adapt the SG module architecture to the loss function used. For MSE linear SG is a reasonable choice, however for log loss one should use architectures including a sigmoid applied pointwise to a linear SG

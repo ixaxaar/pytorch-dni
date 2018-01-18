@@ -25,7 +25,7 @@ from torch.nn.utils import clip_grad_norm
 from dnc import DNC
 from dnc import SDNC
 from dnc import SAM
-from dni import DNI
+from dni import *
 from dnc.util import *
 
 parser = argparse.ArgumentParser(description='PyTorch Differentiable Neural Computer')
@@ -191,7 +191,7 @@ if __name__ == '__main__':
     optimizer = optim.Adadelta(rnn.parameters(), lr=args.lr)
 
   debug_enabled = rnn.debug
-  rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer)
+  rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=Linear_Sigmoid_DNI)
 
   if args.cuda != -1:
     rnn = rnn.cuda(args.cuda)
