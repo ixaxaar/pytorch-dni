@@ -146,7 +146,7 @@ class DNI(nn.Module):
       hx = self.__get_dni_hidden(module)
       # pass through the DNI network, get updated gradients for the host network
       self.dni_networks[id(module)].eval()
-      grad, hx = self.dni_networks[id(module)](output.detach(), hx if hx is None else hx.detach())
+      grad, hx = self.dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
       self.dni_networks[id(module)].train()
 
       # backprop with generated gradients
@@ -178,7 +178,7 @@ class DNI(nn.Module):
       output = self.dni_networks_data[id(module)]['output'].pop()
       hx = self.__get_dni_hidden(module)
       # pass through the DNI net
-      predicted_grad, hx = self.dni_networks[id(module)](output, hx if hx is None else hx.detach())
+      predicted_grad, hx = self.dni_networks[id(module)](output, hx if hx is None else detach_all(hx))
 
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
       loss = self.grad_loss(predicted_grad, grad_output[0].detach())
