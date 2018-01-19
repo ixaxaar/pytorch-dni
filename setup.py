@@ -57,7 +57,7 @@ setup(
 
     packages=find_packages(exclude=['contrib', 'docs', 'tests', 'tasks', 'scripts']),
 
-    install_requires=['torch', 'numpy'],
+    install_requires=['torch', 'numpy', 'cma'],
 
     extras_require={
         'dev': ['check-manifest'],

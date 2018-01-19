@@ -191,7 +191,7 @@ if __name__ == '__main__':
     optimizer = optim.Adadelta(rnn.parameters(), lr=args.lr)
 
   debug_enabled = rnn.debug
-  rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=Linear_Sigmoid_DNI)
+  rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=Linear_DNI)
 
   if args.cuda != -1:
     rnn = rnn.cuda(args.cuda)
@@ -215,7 +215,7 @@ if __name__ == '__main__':
     loss.backward()
 
     T.nn.utils.clip_grad_norm(rnn.parameters(), args.clip)
-    optimizer.step()
+    # optimizer.step()
     loss_value = loss.data[0]
 
     summarize = (epoch % summarize_freq == 0)

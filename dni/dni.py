@@ -93,6 +93,11 @@ class DNI(nn.Module):
         module.register_backward_hook(h)
         self.backward_hooks += [{"name": str(module), "id": id(module), "hook": h}]
 
+  def __get_dni_hidden(self, module):
+    # get the DNI network's hidden state
+    return self.dni_networks_data[id(module)]['hidden'] \
+          if 'hidden' in self.dni_networks_data[id(module)] else None
+
   def _forward_update_hook(self):
     def hook(module, input, output):
       if self.forward_lock:
@@ -100,9 +105,7 @@ class DNI(nn.Module):
         return
 
       log.debug('Forward hook called for ' + str(module))
-
-      # get the grad-detached output for this module
-      output = var(detach_all(format(output, module)).data, requires_grad=True)
+      output = format(output, module)
 
       # create DNI networks and optimizers if they dont exist (for this module)
       if id(module) not in list(self.dni_networks.keys()):
@@ -123,38 +126,43 @@ class DNI(nn.Module):
             self.get_optim(module.parameters(), otype=self.optim, lr=self.lr)
 
         # store the DNI outputs (synthetic gradients) here for calculating loss during backprop
-        self.dni_networks_data[id(module)]['grad'] = []
+        self.dni_networks_data[id(module)]['output'] = []
 
         if self.gpu_id != -1:
           self.dni_networks[id(module)] = self.dni_networks[id(module)].cuda(self.gpu_id)
 
-      # # This module's parameters do not get updated outside of this block
-      # for p in module.parameters(): p.requires_grad = True
-
       self.dni_networks_data[id(module)]['optim'].zero_grad()
-      self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
 
-      # get the DNI network's hidden state
-      hx = self.dni_networks_data[id(module)]['hidden'] if 'hidden' in self.dni_networks_data[id(module)] else None
+      # get the grad-detached output for this module
+      # this is done so that the entire network does not backprop for every layer
+      # TODO: We're actually doing a forward pass again here to rid the module of the input's history
+      # this is costly as shit
+      input = detach_all(input)
+      self.forward_lock = True
+      output = module(*input)
+      self.forward_lock = False
+      output = format(output, module)
 
+      hx = self.__get_dni_hidden(module)
       # pass through the DNI network, get updated gradients for the host network
-      grad, hx = self.dni_networks[id(module)](output, hx)
+      self.dni_networks[id(module)].eval()
+      grad, hx = self.dni_networks[id(module)](output.detach(), hx if hx is None else hx.detach())
+      self.dni_networks[id(module)].train()
 
       # backprop with generated gradients
       self.backward_lock = True
       output.backward(grad.detach())
       self.backward_lock = False
 
-      # parameter = parameter - grad - try subtractive directly on param weights!
+      # optiimize the module's params
+      # TODO: parameter = parameter - grad - try subtractive directly on param weights!
       # can inhibitory neurons be gradient estimators? :O
       self.dni_networks_data[id(module)]['optim'].step()
 
-      # store the hidden state and gradient
+      # store the hidden state and output
       self.dni_networks_data[id(module)]['hidden'] = hx
-      self.dni_networks_data[id(module)]['grad'].append(grad)
+      self.dni_networks_data[id(module)]['output'].append(output.detach())
 
-      # # This module's parameters do not get updated outside of this block
-      # for p in module.parameters(): p.requires_grad = False
     return hook
 
   def _backward_update_hook(self):
@@ -164,12 +172,19 @@ class DNI(nn.Module):
         return
 
       log.debug('Backward hook called for ' + str(module))
+      self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
 
-      predicted_grad = self.dni_networks_data[id(module)]['grad'].pop()
+      # get the network module's output
+      output = self.dni_networks_data[id(module)]['output'].pop()
+      hx = self.__get_dni_hidden(module)
+      # pass through the DNI net
+      predicted_grad, hx = self.dni_networks[id(module)](output, hx if hx is None else hx.detach())
+
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
       loss = self.grad_loss(predicted_grad, grad_output[0].detach())
 
-      loss.backward(retain_graph=True)
+      # backprop and update the DNI net
+      loss.backward()
       self.dni_networks_data[id(module)]['grad_optim'].step()
     return hook
 

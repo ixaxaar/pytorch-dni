@@ -53,8 +53,9 @@ for e in range(epoch):
   output = net(input, *args)
   loss = criterion(output, target_output)
   loss.backward()
-  opt.step()
 
+  # Optional: do this to __also__ update net's weight using backprop
+  # opt.step()
 ...
 ```
 
@@ -91,3 +92,4 @@ The tasks included in this project are the same as those in [pytorch-dnc](https:
 
 - Using a linear SG module makes the implicit assumption that loss is a quadratic function of the activations
 - For best performance one should adapt the SG module architecture to the loss function used. For MSE linear SG is a reasonable choice, however for log loss one should use architectures including a sigmoid applied pointwise to a linear SG
+- Learning rates of the order of `1e-5` with momentum of `0.9` works well for rmsprop
