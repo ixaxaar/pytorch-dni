@@ -67,6 +67,6 @@ class RNN_DNI(DNI_Network):
     output = self.output_weights(output)
 
     if is_2d:
-      output = output.squeeze()
+      output = output.squeeze(1)
 
     return output, hidden
