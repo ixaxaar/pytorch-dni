@@ -37,7 +37,8 @@ class RNN_DNI(DNI_Network):
           hidden_size=self.hidden_size,
           num_layers=self.num_layers,
           bias=self.bias,
-          batch_first=self.batch_first
+          batch_first=self.batch_first,
+          dropout=self.dropout
       )
     elif self.type == 'gru':
       self.rnn = nn.GRU(
@@ -45,7 +46,8 @@ class RNN_DNI(DNI_Network):
           hidden_size=self.hidden_size,
           num_layers=self.num_layers,
           bias=self.bias,
-          batch_first=self.batch_first
+          batch_first=self.batch_first,
+          dropout=self.dropout
       )
     elif self.type == 'rnn':
       self.rnn = nn.RNN(
@@ -53,7 +55,8 @@ class RNN_DNI(DNI_Network):
           hidden_size=self.hidden_size,
           num_layers=self.num_layers,
           bias=self.bias,
-          batch_first=self.batch_first
+          batch_first=self.batch_first,
+          dropout=self.dropout
       )
 
     self.output_weights = nn.Linear(self.hidden_size, self.output_size)
