@@ -14,6 +14,7 @@ class Linear_Sigmoid_DNI(DNI_Network):
       input_size,
       hidden_size,
       output_size,
+      num_layers=3,
       bias=True
   ):
 
@@ -23,10 +24,12 @@ class Linear_Sigmoid_DNI(DNI_Network):
     self.hidden_size = hidden_size
     self.output_size = output_size
     self.bias = bias
+    self.num_layers = num_layers
 
     self.net = \
         nn.Sequential(
             nn.Linear(input_size, hidden_size),
+            *[nn.Linear(hidden_size, hidden_size) for n in range(self.num_layers-2)],
             nn.Linear(hidden_size, output_size),
             nn.Sigmoid()
         )
