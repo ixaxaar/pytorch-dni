@@ -34,7 +34,7 @@ parser.add_argument('-input_size', type=int, default=6, help='dimension of input
 parser.add_argument('-rnn_type', type=str, default='lstm', help='type of recurrent cells to use for the controller')
 parser.add_argument('-nhid', type=int, default=64, help='number of hidden units of the inner nn')
 parser.add_argument('-dropout', type=float, default=0, help='controller dropout')
-parser.add_argument('-memory_type', type=str, default='dnc', help='dense or sparse memory: dnc | sdnc | sam')
+parser.add_argument('-memory_type', type=str, default='dnc', help='dense, sparse or lstm memory: dnc | sdnc | sam | lstm')
 
 parser.add_argument('-nlayer', type=int, default=1, help='number of layers')
 parser.add_argument('-nhlayer', type=int, default=2, help='number of hidden layers')
@@ -223,10 +223,7 @@ if __name__ == '__main__':
 
     loss = criterion((output), target_output)
 
-    # for p in rnn.parameters():
-    #   print(p.whatsup())
-
-    loss.backward(retain_graph=True)
+    loss.backward()
 
     T.nn.utils.clip_grad_norm(rnn.parameters(), args.clip)
     # optimizer.step()
