@@ -155,10 +155,11 @@ class DNI(nn.Module):
       self.forward_lock = False
       output = format(output, module)
 
-      self.grad_input = None
+      self.synthetic_grad_input = None
       def hook(m, i, o):
-        self.grad_input = i
+        self.synthetic_grad_input = detach_all(i)
       handle = module.register_backward_hook(hook)
+      handle.remove()
 
       # get the network module's output
       hx = self.__get_dni_hidden(module)
@@ -170,7 +171,6 @@ class DNI(nn.Module):
       self.backward_lock = True
       output.backward(grad)
       self.backward_lock = False
-      print(self.grad_input)
 
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
       loss = self.grad_loss(predicted_grad, grad_output[0].detach())
@@ -183,6 +183,9 @@ class DNI(nn.Module):
       # update parameters
       self.dni_networks_data[id(module)]['optim'].step()
       self.dni_networks_data[id(module)]['grad_optim'].step()
+
+      # (back)propagate the synthetic gradients
+      return self.synthetic_grad_input
     return hook
 
   def cuda(self, device_id):
