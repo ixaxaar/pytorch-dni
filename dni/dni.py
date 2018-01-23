@@ -22,6 +22,7 @@ class DNI(nn.Module):
       grad_optim='adam',
       grad_lr=0.001,
       hidden_size=None,
+      λ=0.5,
       gpu_id=-1
   ):
     super(DNI, self).__init__()
@@ -54,6 +55,8 @@ class DNI(nn.Module):
 
     # hidden size of the DNI network
     self.hidden_size = 10 if hidden_size is None else hidden_size
+
+    self.λ = λ
 
     self.gpu_id = gpu_id
 
@@ -157,8 +160,10 @@ class DNI(nn.Module):
       # pass through the DNI net
       predicted_grad, hx = self.dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
 
+      # BP(λ)
+      grad = self.λ * predicted_grad.detach() + (1-self.λ) * grad_output[0].detach()
       self.backward_lock = True
-      output.backward(predicted_grad.detach())
+      output.backward(grad)
       self.backward_lock = False
 
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
