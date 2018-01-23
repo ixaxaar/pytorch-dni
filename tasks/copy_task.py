@@ -25,6 +25,7 @@ from torch.nn.utils import clip_grad_norm
 from dnc import DNC
 from dnc import SDNC
 from dnc import SAM
+from test_lstm import LSTMModel
 from dni import *
 from dnc.util import *
 
@@ -49,8 +50,10 @@ parser.add_argument('-sparse_reads', type=int, default=10, help='number of spars
 parser.add_argument('-temporal_reads', type=int, default=2, help='number of temporal reads')
 
 parser.add_argument('-sequence_max_length', type=int, default=4, metavar='N', help='sequence_max_length')
-parser.add_argument('-curriculum_increment', type=int, default=0, metavar='N', help='sequence_max_length incrementor per 1K iterations')
-parser.add_argument('-curriculum_freq', type=int, default=1000, metavar='N', help='sequence_max_length incrementor per 1K iterations')
+parser.add_argument('-curriculum_increment', type=int, default=0, metavar='N',
+                    help='sequence_max_length incrementor per 1K iterations')
+parser.add_argument('-curriculum_freq', type=int, default=1000, metavar='N',
+                    help='sequence_max_length incrementor per 1K iterations')
 parser.add_argument('-cuda', type=int, default=-1, help='Cuda GPU ID, -1 for CPU')
 
 parser.add_argument('-iterations', type=int, default=100000, metavar='N', help='total number of iteration')
@@ -170,6 +173,14 @@ if __name__ == '__main__':
         batch_first=True,
         independent_linears=False
     )
+  elif args.memory_type == 'lstm':
+    rnn = LSTMModel(
+        args.input_size,
+        args.nhid,
+        num_layers=args.nlayer,
+        dropout=args.dropout,
+        batch_first=True
+    )
   else:
     raise Exception('Not recognized type of memory')
 
@@ -178,19 +189,19 @@ if __name__ == '__main__':
   last_save_losses = []
 
   if args.optim == 'adam':
-    optimizer = optim.Adam(rnn.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98]) # 0.0001
+    optimizer = optim.Adam(rnn.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
   elif args.optim == 'adamax':
-    optimizer = optim.Adamax(rnn.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98]) # 0.0001
+    optimizer = optim.Adamax(rnn.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
   elif args.optim == 'rmsprop':
-    optimizer = optim.RMSprop(rnn.parameters(), lr=args.lr, momentum=0.9, eps=1e-10) # 0.0001
+    optimizer = optim.RMSprop(rnn.parameters(), lr=args.lr, momentum=0.9, eps=1e-10)  # 0.0001
   elif args.optim == 'sgd':
-    optimizer = optim.SGD(rnn.parameters(), lr=args.lr) # 0.01
+    optimizer = optim.SGD(rnn.parameters(), lr=args.lr)  # 0.01
   elif args.optim == 'adagrad':
     optimizer = optim.Adagrad(rnn.parameters(), lr=args.lr)
   elif args.optim == 'adadelta':
     optimizer = optim.Adadelta(rnn.parameters(), lr=args.lr)
 
-  debug_enabled = rnn.debug
+  debug_enabled = hasattr(rnn, 'debug') and rnn.debug
   rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=Linear_DNI)
 
   if args.cuda != -1:
@@ -212,7 +223,10 @@ if __name__ == '__main__':
 
     loss = criterion((output), target_output)
 
-    loss.backward()
+    # for p in rnn.parameters():
+    #   print(p.whatsup())
+
+    loss.backward(retain_graph=True)
 
     T.nn.utils.clip_grad_norm(rnn.parameters(), args.clip)
     # optimizer.step()
@@ -223,7 +237,8 @@ if __name__ == '__main__':
     increment_curriculum = (epoch != 0) and (epoch % args.curriculum_freq == 0)
 
     # detach memory from graph
-    mhx = { k : (v.detach() if isinstance(v, var) else v) for k, v in mhx.items() }
+    if mhx is not None:
+      mhx = {k: (v.detach() if isinstance(v, var) else v) for k, v in mhx.items()}
 
     last_save_losses.append(loss_value)
 
@@ -380,4 +395,3 @@ if __name__ == '__main__':
       print("Predicted:  ", ' = ' + str(int(output // 1)) + " [" + str(output) + "]")
     except Exception as e:
       pass
-
