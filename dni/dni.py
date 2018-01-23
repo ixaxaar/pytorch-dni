@@ -155,6 +155,11 @@ class DNI(nn.Module):
       self.forward_lock = False
       output = format(output, module)
 
+      self.grad_input = None
+      def hook(m, i, o):
+        self.grad_input = i
+      handle = module.register_backward_hook(hook)
+
       # get the network module's output
       hx = self.__get_dni_hidden(module)
       # pass through the DNI net
@@ -165,6 +170,7 @@ class DNI(nn.Module):
       self.backward_lock = True
       output.backward(grad)
       self.backward_lock = False
+      print(self.grad_input)
 
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
       loss = self.grad_loss(predicted_grad, grad_output[0].detach())
