@@ -55,7 +55,7 @@ setup(
 
     keywords='rnn pytorch',
 
-    packages=find_packages(exclude=['contrib', 'docs', 'tests', 'tasks', 'scripts']),
+    packages=find_packages(exclude=['contrib', 'docs', 'tests', 'tasks', 'scripts', 'bak']),
 
     install_requires=['torch', 'numpy', 'cma'],
 

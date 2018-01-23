@@ -20,3 +20,4 @@ dist/
 tasks/checkpoints/
 faiss/
 pytorch_dni.egg-info/
+bak/

@@ -3,10 +3,10 @@
 
 import logging
 
-log = logging.getLogger('seq2seq-dnc')
+log = logging.getLogger('dni')
 log.setLevel(logging.DEBUG)
 # create file handler which logs even debug messages
-fh = logging.FileHandler('seq2seq-dnc.log')
+fh = logging.FileHandler('dni.log')
 fh.setLevel(logging.DEBUG)
 # create console handler with a higher log level
 ch = logging.StreamHandler()
