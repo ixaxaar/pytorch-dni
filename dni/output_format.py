@@ -36,14 +36,3 @@ def format(o, obj):
   else:
     return o
 
-def detach_all(o):
-  if type(o) is list:
-    return [ detach_all(x) for x in o ]
-  elif type(o) is tuple:
-    return tuple([ detach_all(x) for x in o ])
-  elif type(o) is dict:
-    return { k: detach_all(v) for k,v in o.items() }
-  elif type(o) is var:
-    return o.detach()
-  else:
-    return o

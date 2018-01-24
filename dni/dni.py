@@ -154,11 +154,15 @@ class DNI(nn.Module):
 
       def save_synthetic_gradient(module, grad_input):
         def hook(m, i, o):
-          # TODO: replace None grad_inputs with zero tensors?
-          i = tuple([x if x is not None else T.zeros(grad_input[ctr].size()) for ctr, x in enumerate(i)])
+          if any(x is None for x in grad_input):
+            self.synthetic_grad_input[id(module)] = None
+            return
+          else:
+            # TODO: replace None grad_inputs with zero tensors?
+            i = tuple([x if x is not None else T.zeros(grad_input[ctr].size()) for ctr, x in enumerate(i)])
 
-          if id(module) == id(m):
-            self.synthetic_grad_input[id(module)] = detach_all(i)
+            if id(module) == id(m):
+              self.synthetic_grad_input[id(module)] = detach_all(i)
         return hook
 
       # store the synthetic gradient output during the backward pass
@@ -199,9 +203,16 @@ class DNI(nn.Module):
       self.dni_networks_data[id(module)]['grad_optim'].step()
 
       # (back)propagate the (mixed) synthetic and original gradients
-      grad_inputs = tuple((1 - self.λ) * s + self.λ * a.detach()
-                          for s, a in zip(self.synthetic_grad_input[id(module)], grad_input))
-      return
+      if any(x is None for x in grad_input) or \
+              self.synthetic_grad_input[id(module)] is None:
+        grad_inputs = None
+      else:
+        self.synthetic_grad_input[id(module)] = \
+            [x if type(x) is var else var(x) for x in self.synthetic_grad_input[id(module)]]
+
+        grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach())
+                            for s, a in zip(self.synthetic_grad_input[id(module)], grad_input))
+      return grad_inputs
 
     return hook
 
