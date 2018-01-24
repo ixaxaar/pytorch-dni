@@ -21,6 +21,7 @@ sys.path.insert(0, '.')
 
 from dnc import SAM
 from dni import DNI
+from dni.util import detach_all
 from test_utils import generate_data, criterion
 
 
@@ -75,7 +76,6 @@ def test_rnn_1():
   loss.backward()
 
   T.nn.utils.clip_grad_norm(rnn.parameters(), clip)
-  optimizer.step()
 
   assert target_output.size() == T.Size([21, 10, 100])
   assert chx[0][0][0].size() == T.Size([10,100])
@@ -134,7 +134,6 @@ def test_rnn_n():
   loss.backward()
 
   T.nn.utils.clip_grad_norm(rnn.parameters(), clip)
-  optimizer.step()
 
   assert target_output.size() == T.Size([27, 10, 100])
   assert chx[0][0].size() == T.Size([num_hidden_layers,10,100])
@@ -186,17 +185,18 @@ def test_rnn_no_memory_pass():
 
   (chx, mhx, rv) = (None, None, None)
   outputs = []
-  for x in range(6):
+  for x in range(2):
     output, (chx, mhx, rv), v = rnn(input_data, (chx, mhx, rv), pass_through_memory=False)
     output = output.transpose(0, 1)
     outputs.append(output)
+
+    (chx, mhx, rv) = (detach_all(chx), detach_all(mhx), detach_all(rv))
 
   output = functools.reduce(lambda x,y: x + y, outputs)
   loss = criterion((output), target_output)
   loss.backward()
 
   T.nn.utils.clip_grad_norm(rnn.parameters(), clip)
-  optimizer.step()
 
   assert target_output.size() == T.Size([27, 10, 100])
   assert chx[0][0].size() == T.Size([num_hidden_layers,10,100])

@@ -75,7 +75,6 @@ def test_rnn_dni():
   loss.backward()
 
   T.nn.utils.clip_grad_norm(rnn.parameters(), clip)
-  optimizer.step()
 
   assert target_output.size() == T.Size([27, 10, 100])
   assert chx[0][0].size() == T.Size([num_hidden_layers,10,100])
@@ -134,7 +133,6 @@ def test_linear_dni():
   loss.backward()
 
   T.nn.utils.clip_grad_norm(rnn.parameters(), clip)
-  optimizer.step()
 
   assert target_output.size() == T.Size([27, 10, 100])
   assert chx[0][0].size() == T.Size([num_hidden_layers,10,100])
@@ -192,7 +190,6 @@ def test_linear_sigmoid_dni():
   loss.backward()
 
   T.nn.utils.clip_grad_norm(rnn.parameters(), clip)
-  optimizer.step()
 
   assert target_output.size() == T.Size([27, 10, 100])
   assert chx[0][0].size() == T.Size([num_hidden_layers,10,100])
