@@ -66,6 +66,13 @@ class DNI(nn.Module):
     log.debug(self.network)
     log.debug("=============== Hooks registered =====================")
 
+    # Set model's methods as our own
+    method_list = [m for m in dir(self.network)
+                   if callable(getattr(self.network, m)) and not m.startswith("__")
+                   and not hasattr(self, m)]
+    for m in method_list:
+      setattr(self, m, getattr(self.network, m))
+
   def register_forward(self, network, hook):
     for module in network.modules():
       # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
@@ -150,7 +157,7 @@ class DNI(nn.Module):
         return
 
       log.debug('Backward hook called for ' + str(module) + '  ' +
-                str(len(self.dni_networks_data[id(module)]['input'])))
+            str(len(self.dni_networks_data[id(module)]['input'])))
 
       def save_synthetic_gradient(module, grad_input):
         def hook(m, i, o):
@@ -209,6 +216,8 @@ class DNI(nn.Module):
       else:
         self.synthetic_grad_input[id(module)] = \
             [x if type(x) is var else var(x) for x in self.synthetic_grad_input[id(module)]]
+        if self.gpu_id != -1:
+          self.synthetic_grad_input[id(module)] = [x.cuda(self.gpu_id) for x in self.synthetic_grad_input[id(module)]]
 
         grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach())
                             for s, a in zip(self.synthetic_grad_input[id(module)], grad_input))
