@@ -51,7 +51,7 @@ class DNI(nn.Module):
     self.backward_hooks = []
     # lock that prevents the backward and forward hooks to act respectively
     self.backward_lock = False
-    self.forward_lock = False
+    self.synthetic_grad_input = {}
 
     # hidden size of the DNI network
     self.hidden_size = 10 if hidden_size is None else hidden_size
@@ -61,7 +61,7 @@ class DNI(nn.Module):
     self.gpu_id = gpu_id
 
     # register forward and backward hooks to all leaf modules in the network
-    self.register_forward(self.network, self._forward_update_hook)
+    # self.register_forward(self.network, self._forward_update_hook)
     self.register_backward(self.network, self._backward_update_hook)
     log.debug(self.network)
     log.debug("=============== Hooks registered =====================")
@@ -78,8 +78,13 @@ class DNI(nn.Module):
         # register forward hooks
         h = hook()
         log.debug('Registering forward hooks for ' + str(module))
-        module.register_forward_hook(h)
-        self.forward_hooks += [{"name": str(module), "id": id(module), "hook": h}]
+        handle = module.register_forward_hook(h)
+        self.forward_hooks += [{"name": str(module), "id": id(module), "hook": handle}]
+
+  def unregister_forward(self):
+    for h in self.forward_hooks:
+      h['hook'].remove()
+    self.forward_hooks = []
 
   def register_backward(self, network, hook):
     for module in network.modules():
@@ -99,14 +104,10 @@ class DNI(nn.Module):
   def __get_dni_hidden(self, module):
     # get the DNI network's hidden state
     return self.dni_networks_data[id(module)]['hidden'] \
-          if 'hidden' in self.dni_networks_data[id(module)] else None
+        if 'hidden' in self.dni_networks_data[id(module)] else None
 
   def _forward_update_hook(self):
     def hook(module, input, output):
-      if self.forward_lock:
-        log.debug("============= Forward locked for " + str(module))
-        return
-
       log.debug('Forward hook called for ' + str(module))
       output = format(output, module)
 
@@ -130,6 +131,7 @@ class DNI(nn.Module):
 
         # store the DNI outputs (synthetic gradients) here for calculating loss during backprop
         self.dni_networks_data[id(module)]['input'] = []
+        self.synthetic_grad_input[id(module)] = None
 
         if self.gpu_id != -1:
           self.dni_networks[id(module)] = self.dni_networks[id(module)].cuda(self.gpu_id)
@@ -142,50 +144,65 @@ class DNI(nn.Module):
     def hook(module, grad_input, grad_output):
       if self.backward_lock:
         log.debug("============= Backward locked for " + str(module))
+        # lock valid for only one module
+        # TODO: check if these handles are called asynchronously
+        self.backward_lock = False
         return
 
-      log.debug('Backward hook called for ' + str(module))
+      log.debug('Backward hook called for ' + str(module) + '  ' +
+                str(len(self.dni_networks_data[id(module)]['input'])))
+
+      def save_synthetic_gradient(module, grad_input):
+        def hook(m, i, o):
+          # TODO: replace None grad_inputs with zero tensors?
+          i = tuple([x if x is not None else T.zeros(grad_input[ctr].size()) for ctr, x in enumerate(i)])
+
+          if id(module) == id(m):
+            self.synthetic_grad_input[id(module)] = detach_all(i)
+        return hook
+
+      # store the synthetic gradient output during the backward pass
+      handle = module.register_backward_hook(save_synthetic_gradient(module, grad_input))
 
       self.dni_networks_data[id(module)]['optim'].zero_grad()
       self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
 
-      input = self.dni_networks_data[id(module)]['input'].pop()
-      self.forward_lock = True
+      try:
+        input = self.dni_networks_data[id(module)]['input'].pop()
+      except IndexError:
+        log.warning('Trying to search for non existent output ' + str(module))
+        return
+
+      # forward pass through the network module
       output = module(*input)
-      self.forward_lock = False
       output = format(output, module)
 
-      self.synthetic_grad_input = None
-      def hook(m, i, o):
-        self.synthetic_grad_input = detach_all(i)
-      handle = module.register_backward_hook(hook)
-      handle.remove()
-
-      # get the network module's output
-      hx = self.__get_dni_hidden(module)
       # pass through the DNI net
+      hx = self.__get_dni_hidden(module)
       predicted_grad, hx = self.dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
 
       # BP(λ)
-      grad = self.λ * predicted_grad.detach() + (1-self.λ) * grad_output[0].detach()
+      grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
       self.backward_lock = True
-      output.backward(grad)
+      output.backward(grad.detach())
       self.backward_lock = False
+      handle.remove()
 
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
       loss = self.grad_loss(predicted_grad, grad_output[0].detach())
 
       # backprop and update the DNI net
-      self.backward_lock = True
       loss.backward()
-      self.backward_lock = False
 
       # update parameters
       self.dni_networks_data[id(module)]['optim'].step()
       self.dni_networks_data[id(module)]['grad_optim'].step()
 
-      # (back)propagate the synthetic gradients
-      return self.synthetic_grad_input
+      # (back)propagate the (mixed) synthetic and original gradients
+      grad_inputs = tuple((1 - self.λ) * s + self.λ * a.detach()
+                          for s, a in zip(self.synthetic_grad_input[id(module)], grad_input))
+      return
+
     return hook
 
   def cuda(self, device_id):
@@ -195,7 +212,9 @@ class DNI(nn.Module):
 
   def forward(self, *args, **kwargs):
     log.debug("=============== Forward pass starting =====================")
+    self.register_forward(self.network, self._forward_update_hook)
     ret = self.network(*args, **kwargs)
+    self.unregister_forward()
     log.debug("=============== Forward pass done =====================")
     return ret
 
