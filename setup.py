@@ -22,7 +22,7 @@ with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
 setup(
     name='pytorch-dni',
 
-    version='0.0.1',
+    version='0.0.2',
 
     description='DNI, for Pytorch',
     long_description=long_description,
