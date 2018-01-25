@@ -232,6 +232,10 @@ class DNI(nn.Module):
 
   def forward(self, *args, **kwargs):
     log.debug("=============== Forward pass starting =====================")
+    # clear out all buffers
+    for i, data in self.dni_networks_data.items():
+      data['input'] = []
+
     self.register_forward(self.network, self._forward_update_hook)
     ret = self.network(*args, **kwargs)
     self.unregister_forward()

@@ -12,10 +12,10 @@ import numpy as np
 import logging
 
 log = logging.getLogger('dni')
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 # create file handler which logs even debug messages
 fh = logging.FileHandler('dni.log')
-fh.setLevel(logging.DEBUG)
+fh.setLevel(logging.INFO)
 # create console handler with a higher log level
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
