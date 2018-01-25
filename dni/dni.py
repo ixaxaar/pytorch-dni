@@ -66,6 +66,9 @@ class DNI(nn.Module):
     log.debug(self.network)
     log.debug("=============== Hooks registered =====================")
 
+    log.info('Using DNI to optimize the network \n' + str(self.network) + '\n with optimizer ' + \
+      self.optim + ', lr ' + str(self.lr) + ' with ' + str(self.dni_network.__name__))
+
     # Set model's methods as our own
     method_list = [m for m in dir(self.network)
                    if callable(getattr(self.network, m)) and not m.startswith("__")
@@ -143,7 +146,7 @@ class DNI(nn.Module):
         if self.gpu_id != -1:
           self.dni_networks[id(module)] = self.dni_networks[id(module)].cuda(self.gpu_id)
 
-      self.dni_networks_data[id(module)]['input'].append(detach_all(input))
+      self.dni_networks_data[id(module)]['output'].append(output)
 
     return hook
 
@@ -153,7 +156,7 @@ class DNI(nn.Module):
         log.debug("============= Backward locked for " + str(module))
         # lock valid for only one module
         # TODO: check if these handles are called asynchronously
-        self.backward_lock = False
+        # self.backward_lock = False
         return
 
       log.debug('Backward hook called for ' + str(module) + '  ' +
@@ -179,23 +182,20 @@ class DNI(nn.Module):
       self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
 
       try:
-        input = self.dni_networks_data[id(module)]['input'].pop()
+        output = self.dni_networks_data[id(module)]['output'].pop()
       except IndexError:
         log.warning('Trying to search for non existent output ' + str(module))
         return
 
-      # forward pass through the network module
-      output = module(*input)
-      output = format(output, module)
-
       # pass through the DNI net
       hx = self.__get_dni_hidden(module)
-      predicted_grad, hx = self.dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
+      predicted_grad, hx = \
+        self.dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
 
       # BP(λ)
       grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
       self.backward_lock = True
-      output.backward(grad.detach())
+      output.backward(grad.detach(), retain_graph=True)
       self.backward_lock = False
       handle.remove()
 
