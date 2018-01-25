@@ -97,21 +97,25 @@ test_data = batchify(corpus.test, eval_batch_size)
 ntokens = len(corpus.dictionary)
 model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.tied)
 
-if args.optim == 'adam':
-  optimizer = optim.Adam(model.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])
-if args.optim == 'sparseadam':
-  optimizer = optim.SparseAdam(model.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])
-if args.optim == 'adamax':
-  optimizer = optim.Adamax(model.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])
-elif args.optim == 'rmsprop':
-  optimizer = optim.RMSprop(model.parameters(), lr=args.lr, eps=1e-9, momentum=0.9)
-elif args.optim == 'sgd':
-  optimizer = optim.SGD(model.parameters(), lr=args.lr) # 0.01
-elif args.optim == 'adagrad':
-  optimizer = optim.Adagrad(model.parameters(), lr=args.lr)
-elif args.optim == 'adadelta':
-  optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+def get_optim(lr):
+  if args.optim == 'adam':
+    optimizer = optim.Adam(model.parameters(), lr=lr, eps=1e-9, betas=[0.9, 0.98])
+  if args.optim == 'sparseadam':
+    optimizer = optim.SparseAdam(model.parameters(), lr=lr, eps=1e-9, betas=[0.9, 0.98])
+  if args.optim == 'adamax':
+    optimizer = optim.Adamax(model.parameters(), lr=lr, eps=1e-9, betas=[0.9, 0.98])
+  elif args.optim == 'rmsprop':
+    optimizer = optim.RMSprop(model.parameters(), lr=lr, eps=1e-9, momentum=0.9)
+  elif args.optim == 'sgd':
+    optimizer = optim.SGD(model.parameters(), lr=lr) # 0.01
+  elif args.optim == 'adagrad':
+    optimizer = optim.Adagrad(model.parameters(), lr=lr)
+  elif args.optim == 'adadelta':
+    optimizer = optim.Adadelta(model.parameters(), lr=lr)
 
+  return optimizer
+
+optimizer = get_optim(args.lr)
 model = DNI(model, hidden_size=args.nhid, optim=optimizer, dni_network=Linear_DNI, λ=0.5)
 
 if args.cuda:
@@ -187,7 +191,7 @@ def train():
 
     # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
     torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
-    optimizer.step()
+    # optimizer.step()
 
     total_loss += loss.data
 
@@ -225,6 +229,7 @@ try:
     else:
       # Anneal the learning rate if no improvement has been seen in the validation dataset.
       lr /= 4.0
+      optimizer = get_optim(lr)
 except KeyboardInterrupt:
   print('-' * 89)
   print('Exiting from training early')
