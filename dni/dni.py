@@ -8,7 +8,6 @@ import torch.optim as optim
 import torch.nn as nn
 
 from .linear_dni import Linear_DNI
-from .output_format import *
 from .util import *
 
 
@@ -60,8 +59,7 @@ class DNI(nn.Module):
 
     self.gpu_id = gpu_id
 
-    # register forward and backward hooks to all leaf modules in the network
-    # self.register_forward(self.network, self._forward_update_hook)
+    # register backward hooks to all leaf modules in the network
     self.register_backward(self.network, self._backward_update_hook)
     log.debug(self.network)
     log.debug("=============== Hooks registered =====================")
@@ -140,7 +138,7 @@ class DNI(nn.Module):
             self.get_optim(module.parameters(), otype=self.optim, lr=self.lr)
 
         # store the DNI outputs (synthetic gradients) here for calculating loss during backprop
-        self.dni_networks_data[id(module)]['input'] = []
+        self.dni_networks_data[id(module)]['output'] = []
         self.synthetic_grad_input[id(module)] = None
 
         if self.gpu_id != -1:
@@ -154,13 +152,10 @@ class DNI(nn.Module):
     def hook(module, grad_input, grad_output):
       if self.backward_lock:
         log.debug("============= Backward locked for " + str(module))
-        # lock valid for only one module
-        # TODO: check if these handles are called asynchronously
-        # self.backward_lock = False
         return
 
       log.debug('Backward hook called for ' + str(module) + '  ' +
-            str(len(self.dni_networks_data[id(module)]['input'])))
+            str(len(self.dni_networks_data[id(module)]['output'])))
 
       def save_synthetic_gradient(module, grad_input):
         def hook(m, i, o):
