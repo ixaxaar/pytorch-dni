@@ -64,8 +64,8 @@ class DNI(nn.Module):
     log.debug(self.network)
     log.debug("=============== Hooks registered =====================")
 
-    log.info('Using DNI to optimize the network \n' + str(self.network) + '\n with optimizer ' + \
-      self.optim + ', lr ' + str(self.lr) + ' with ' + str(self.dni_network.__name__))
+    log.info('Using DNI to optimize the network \n' + str(self.network) + '\n with optimizer ' +
+             self.optim + ', lr ' + str(self.lr) + ' with ' + str(self.dni_network.__name__))
 
     # Set model's methods as our own
     method_list = [m for m in dir(self.network)
@@ -138,13 +138,13 @@ class DNI(nn.Module):
             self.get_optim(module.parameters(), otype=self.optim, lr=self.lr)
 
         # store the DNI outputs (synthetic gradients) here for calculating loss during backprop
-        self.dni_networks_data[id(module)]['output'] = []
+        self.dni_networks_data[id(module)]['input'] = []
         self.synthetic_grad_input[id(module)] = None
 
         if self.gpu_id != -1:
           self.dni_networks[id(module)] = self.dni_networks[id(module)].cuda(self.gpu_id)
 
-      self.dni_networks_data[id(module)]['output'].append(output)
+      self.dni_networks_data[id(module)]['input'].append(detach_all(input))
 
     return hook
 
@@ -155,7 +155,7 @@ class DNI(nn.Module):
         return
 
       log.debug('Backward hook called for ' + str(module) + '  ' +
-            str(len(self.dni_networks_data[id(module)]['output'])))
+                str(len(self.dni_networks_data[id(module)]['input'])))
 
       def save_synthetic_gradient(module, grad_input):
         def hook(m, i, o):
@@ -164,7 +164,8 @@ class DNI(nn.Module):
             return
           else:
             # TODO: replace None grad_inputs with zero tensors?
-            i = tuple([x if x is not None else T.zeros(grad_input[ctr].size()) for ctr, x in enumerate(i)])
+            i = tuple([x if x is not None else T.zeros(grad_input[ctr].size())
+                       for ctr, x in enumerate(i)])
 
             if id(module) == id(m):
               self.synthetic_grad_input[id(module)] = detach_all(i)
@@ -177,15 +178,19 @@ class DNI(nn.Module):
       self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
 
       try:
-        output = self.dni_networks_data[id(module)]['output'].pop()
+        input = self.dni_networks_data[id(module)]['input'].pop()
       except IndexError:
         log.warning('Trying to search for non existent output ' + str(module))
         return
 
+      # forward pass through the module alone
+      outputs = module(*input)
+      output = format(outputs, module)
+
       # pass through the DNI net
       hx = self.__get_dni_hidden(module)
       predicted_grad, hx = \
-        self.dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
+          self.dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
 
       # BP(λ)
       grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
