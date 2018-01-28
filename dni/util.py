@@ -51,12 +51,14 @@ def detach_all(o):
 def format(o, obj):
   class_name = obj.__class__.__name__
 
-  if class_name == 'LSTM':
-    return o[0]
-  elif class_name == 'GRU':
-    return o[0]
-  elif class_name == 'RNN':
-    return o[0]
+  if class_name == 'LSTM' or class_name == 'LSTMCell':
+    return o[0].float()
+  elif class_name == 'GRU' or class_name == 'GRUCell':
+    return o[0].float()
+  elif class_name == 'RNN' or class_name == 'RNNCell':
+    return o[0].float()
+  elif class_name == 'Linear':
+    return o.float()
   else:
     return o
 
@@ -75,3 +77,7 @@ def monkeypatch_forwards(net, callback, *args, **kwargs):
       log.debug('Monkeypatching forward for ' + str(module))
       cb = callback(module.forward, *args, **kwargs)
       setattr(module, 'forward', cb)
+
+
+def as_type(var1, ref):
+  return Variable(var1.data.type(ref.data.type()), requires_grad=True)
