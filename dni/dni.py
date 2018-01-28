@@ -193,6 +193,7 @@ class DNI(nn.Module):
           self.dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
 
       # BP(λ)
+      predicted_grad = as_type(predicted_grad, grad_output[0])
       grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
       self.backward_lock = True
       output.backward(grad.detach(), retain_graph=True)
@@ -219,8 +220,9 @@ class DNI(nn.Module):
         if self.gpu_id != -1:
           self.synthetic_grad_input[id(module)] = [x.cuda(self.gpu_id) for x in self.synthetic_grad_input[id(module)]]
 
-        grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach())
-                            for s, a in zip(self.synthetic_grad_input[id(module)], grad_input))
+        zipped = [(as_type(s, a), a)
+         for s, a in zip(self.synthetic_grad_input[id(module)], grad_input)]
+        grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach()) for (s, a) in zipped)
       return grad_inputs
 
     return hook
