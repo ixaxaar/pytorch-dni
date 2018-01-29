@@ -7,12 +7,12 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn as nn
 
-from .linear_dni import LinearDNI
 from .util import *
+from .altprop import Altprop
 import copy
 
 
-class DNI(nn.Module):
+class DNI(Altprop):
 
   def __init__(
       self,
@@ -49,8 +49,6 @@ class DNI(nn.Module):
     self.dni_networks = {}
     self.dni_networks_data = {}
 
-    self.forward_hooks = []
-    self.backward_hooks = []
     # lock that prevents the backward and forward hooks to act respectively
     self.backward_lock = False
     self.synthetic_grad_input = {}
@@ -77,45 +75,38 @@ class DNI(nn.Module):
     for m in method_list:
       setattr(self, m, getattr(self.network, m))
 
-  def register_forward(self, network, hook):
-    for module in network.modules():
-      # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
-      l = 0
-      for x in module.children():
-        l += 1
-      p = sum([1 for x in module.parameters()])
-
-      if l == 0 and p > 0:
-        # register forward hooks
-        h = hook()
-        log.debug('Registering forward hooks for ' + str(module))
-        handle = module.register_forward_hook(h)
-        self.forward_hooks += [{"name": str(module), "id": id(module), "hook": handle}]
-
-  def unregister_forward(self):
-    for h in self.forward_hooks:
-      h['hook'].remove()
-    self.forward_hooks = []
-
-  def register_backward(self, network, hook):
-    for module in network.modules():
-      # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
-      l = 0
-      for x in module.children():
-        l += 1
-      p = sum([1 for x in module.parameters()])
-
-      if l == 0 and p > 0:
-        # register backward hooks
-        h = hook()
-        log.debug('Registering backward hooks for ' + str(module))
-        module.register_backward_hook(h)
-        self.backward_hooks += [{"name": str(module), "id": id(module), "hook": h}]
-
   def __get_dni_hidden(self, module):
     # get the DNI network's hidden state
     return self.dni_networks_data[id(module)]['hidden'] \
         if 'hidden' in self.dni_networks_data[id(module)] else None
+
+  def __create_backward_dni_nets(self, module, output):
+    # the DNI network
+    dni_params = { **self.dni_params, **{'module': module} } \
+      if hasattr(self.dni_params, 'module') else self.dni_params
+    self.dni_networks[id(module)] = self.dni_network(
+        input_size=output.size(-1),
+        hidden_size=self.hidden_size,
+        output_size=output.size(-1),
+        **dni_params
+    )
+    setattr(self, 'dni_net_'+str(id(module)), self.dni_networks[id(module)])
+
+    self.dni_networks_data[id(module)] = {}
+    # the gradient module's (DNI network) optimizer
+    self.dni_networks_data[id(module)]['grad_optim'] = \
+        self.get_optim(self.dni_networks[id(module)].parameters(), otype=self.grad_optim, lr=self.lr)
+
+    # the network module's optimizer
+    self.dni_networks_data[id(module)]['optim'] = \
+        self.get_optim(module.parameters(), otype=self.optim, lr=self.lr)
+
+    # store the DNI outputs (synthetic gradients) here for calculating loss during backprop
+    self.dni_networks_data[id(module)]['input'] = []
+    self.synthetic_grad_input[id(module)] = None
+
+    if self.gpu_id != -1:
+      self.dni_networks[id(module)] = self.dni_networks[id(module)].cuda(self.gpu_id)
 
   def _forward_update_hook(self):
     def hook(module, input, output):
@@ -124,34 +115,24 @@ class DNI(nn.Module):
 
       # create DNI networks and optimizers if they dont exist (for this module)
       if id(module) not in list(self.dni_networks.keys()):
-        # the DNI network
-        dni_params = { **self.dni_params, **{'module': module} } \
-          if hasattr(self.dni_params, 'module') else self.dni_params
-        self.dni_networks[id(module)] = self.dni_network(
-            input_size=output.size(-1),
-            hidden_size=self.hidden_size,
-            output_size=output.size(-1),
-            **dni_params
-        )
-
-        self.dni_networks_data[id(module)] = {}
-        # the gradient module's (DNI network) optimizer
-        self.dni_networks_data[id(module)]['grad_optim'] = \
-            self.get_optim(self.dni_networks[id(module)].parameters(), otype=self.grad_optim, lr=self.lr)
-
-        # the network module's optimizer
-        self.dni_networks_data[id(module)]['optim'] = \
-            self.get_optim(module.parameters(), otype=self.optim, lr=self.lr)
-
-        # store the DNI outputs (synthetic gradients) here for calculating loss during backprop
-        self.dni_networks_data[id(module)]['input'] = []
-        self.synthetic_grad_input[id(module)] = None
-
-        if self.gpu_id != -1:
-          self.dni_networks[id(module)] = self.dni_networks[id(module)].cuda(self.gpu_id)
+        self.__create_backward_dni_nets(module, output)
 
       self.dni_networks_data[id(module)]['input'].append(detach_all(input))
 
+    return hook
+
+  def __save_synthetic_gradient(self, module, grad_input):
+    def hook(m, i, o):
+      if any(x is None for x in grad_input):
+        self.synthetic_grad_input[id(module)] = None
+        return
+      else:
+        # TODO: replace None grad_inputs with zero tensors?
+        i = tuple([x if x is not None else T.zeros(grad_input[ctr].size())
+                   for ctr, x in enumerate(i)])
+
+        if id(module) == id(m):
+          self.synthetic_grad_input[id(module)] = detach_all(i)
     return hook
 
   def _backward_update_hook(self):
@@ -163,22 +144,8 @@ class DNI(nn.Module):
       log.debug('Backward hook called for ' + str(module) + '  ' +
                 str(len(self.dni_networks_data[id(module)]['input'])))
 
-      def save_synthetic_gradient(module, grad_input):
-        def hook(m, i, o):
-          if any(x is None for x in grad_input):
-            self.synthetic_grad_input[id(module)] = None
-            return
-          else:
-            # TODO: replace None grad_inputs with zero tensors?
-            i = tuple([x if x is not None else T.zeros(grad_input[ctr].size())
-                       for ctr, x in enumerate(i)])
-
-            if id(module) == id(m):
-              self.synthetic_grad_input[id(module)] = detach_all(i)
-        return hook
-
       # store the synthetic gradient output during the backward pass
-      handle = module.register_backward_hook(save_synthetic_gradient(module, grad_input))
+      handle = module.register_backward_hook(self.__save_synthetic_gradient(module, grad_input))
 
       self.dni_networks_data[id(module)]['optim'].zero_grad()
       self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
@@ -233,11 +200,6 @@ class DNI(nn.Module):
 
     return hook
 
-  def cuda(self, device_id):
-    self.network.cuda(device_id)
-    self.gpu_id = device_id
-    return self
-
   def forward(self, *args, **kwargs):
     log.debug("=============== Forward pass starting =====================")
     # clear out all buffers
@@ -256,19 +218,8 @@ class DNI(nn.Module):
     log.debug("=============== Backward pass done =====================")
     return ret
 
-  def get_optim(self, parameters, otype="adam", lr=0.001):
-    if type(otype) is str:
-      if otype == 'adam':
-        optimizer = optim.Adam(parameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])
-      elif otype == 'adamax':
-        optimizer = optim.Adamax(selfparameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])
-      elif otype == 'rmsprop':
-        optimizer = optim.RMSprop(parameters, lr=lr, momentum=0.9, eps=1e-10)
-      elif otype == 'sgd':
-        optimizer = optim.SGD(parameters, lr=lr)  # 0.01
-      elif otype == 'adagrad':
-        optimizer = optim.Adagrad(parameters, lr=lr)
-      elif otype == 'adadelta':
-        optimizer = optim.Adadelta(parameters, lr=lr)
+  def cuda(self, device_id):
+    self.network.cuda(device_id)
+    self.gpu_id = device_id
+    return self
 
-    return optimizer

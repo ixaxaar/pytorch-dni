@@ -7,12 +7,12 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn as nn
 
-from .linear_dni import LinearDNI
 from .util import *
+from .altprop import Altprop
 import functools
 
 
-class _DNI(nn.Module):
+class _DNI(Altprop):
 
   def __init__(
       self,
@@ -51,8 +51,6 @@ class _DNI(nn.Module):
     self.input_dni_networks = {}
     self.input_networks_optim = {}
 
-    self.forward_hooks = []
-    self.backward_hooks = []
     # lock that prevents the backward and forward hooks to act respectively
     self.backward_lock = False
 
@@ -79,16 +77,6 @@ class _DNI(nn.Module):
                    and not hasattr(self, m)]
     for m in method_list:
       setattr(self, m, getattr(self.network, m))
-
-  def register_backward(self, network, hook):
-    for module in network.modules():
-      # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
-      if is_leaf(module):
-        # register backward hooks
-        h = hook()
-        log.debug('Registering backward hooks for ' + str(module))
-        module.register_backward_hook(h)
-        self.backward_hooks += [{"name": str(module), "id": id(module), "hook": h}]
 
   def __get_dni_hidden(self, module):
     # get the DNI network's hidden state
@@ -144,14 +132,6 @@ class _DNI(nn.Module):
     def hook(i, o):
       self.grad_dni_data[id(module)]['grad_input'].append(detach_all(i))
     return hook
-
-  def __register_backward_hook(self, variable, hook):
-    # for other hooks this is done in __call__ before forward
-    if hasattr(variable, 'grad_fn'):
-      grad_fn = variable.grad_fn
-      # print(dir(grad_fn), grad_fn.next_functions)
-      if grad_fn is not None:
-        return grad_fn.register_hook(hook)
 
   def _forward_update_hook(self, forward):
     def hook(*input, **kwargs):
@@ -272,20 +252,3 @@ class _DNI(nn.Module):
     self.grad_dni_network_optim.step()
     self.synthetic_loss = 0
     log.debug("=============== Optimizing pass done =====================")
-
-  def get_optim(self, parameters, otype="adam", lr=0.001):
-    if type(otype) is str:
-      if otype == 'adam':
-        optimizer = optim.Adam(parameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])
-      elif otype == 'adamax':
-        optimizer = optim.Adamax(selfparameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])
-      elif otype == 'rmsprop':
-        optimizer = optim.RMSprop(parameters, lr=lr, momentum=0.9, eps=1e-10)
-      elif otype == 'sgd':
-        optimizer = optim.SGD(parameters, lr=lr)  # 0.01
-      elif otype == 'adagrad':
-        optimizer = optim.Adagrad(parameters, lr=lr)
-      elif otype == 'adadelta':
-        optimizer = optim.Adadelta(parameters, lr=lr)
-
-    return optimizer
