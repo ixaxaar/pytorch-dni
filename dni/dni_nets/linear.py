@@ -38,8 +38,6 @@ class LinearDNI(DNINetwork):
     # final layer (yeah, no kidding)
     self.final = nn.Linear(self.hidden_size, output_size)
 
-    # log.info('LinearDNI created DNI net \n' + str(self))
-
   def layer(self, input_size, hidden_size): return nn.Sequential(
       nn.Linear(input_size, hidden_size),
       nn.BatchNorm1d(hidden_size)

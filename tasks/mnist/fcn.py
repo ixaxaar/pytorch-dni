@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 from __future__ import print_function
 import argparse
 import torch
@@ -13,8 +16,8 @@ parser.add_argument('--batch-size', type=int, default=64, metavar='N',
           help='input batch size for training (default: 64)')
 parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
           help='input batch size for testing (default: 1000)')
-parser.add_argument('--epochs', type=int, default=10, metavar='N',
-          help='number of epochs to train (default: 10)')
+parser.add_argument('--epochs', type=int, default=100, metavar='N',
+          help='number of epochs to train (default: 100)')
 parser.add_argument('--lr', type=float, default=0.0001, metavar='LR',
           help='learning rate (default: 0.0001)')
 # parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
@@ -23,6 +26,8 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
           help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
           help='random seed (default: 1)')
+parser.add_argument('--lambda', type=int, default=0.2, metavar='S',
+          help='lambda for DNI: fraction of backprop gradient to mix (default: 0.2)')
 parser.add_argument('--log-interval', type=int, default=100, metavar='N',
           help='how many batches to wait before logging training status')
 args = parser.parse_args()
@@ -55,10 +60,6 @@ class Net(nn.Module):
     super(Net, self).__init__()
     self.num_layers = num_layers
     self.hidden_size = hidden_size
-    # self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-    # self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-    # self.conv2_drop = nn.Dropout2d()
-    # self.fc1 = nn.Linear(320, 50)
 
     self.net = [self.layer(
         image_size*image_size if l == 0 else hidden_size,
@@ -89,7 +90,15 @@ optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
 from dni import *
 from dni import _DNI
-model = DNI(model, hidden_size=256, dni_network=LinearDNI, λ=0, grad_optim='adam', grad_lr=0.00001)
+
+model = DNI(
+  model,
+  hidden_size=256,
+  dni_network=LinearDNI,
+  λ=getattr(args, 'lambda'),
+  grad_optim='adam',
+  grad_lr=args.lr
+)
 if args.cuda:
   model.cuda(0)
 
