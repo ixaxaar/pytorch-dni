@@ -59,6 +59,8 @@ class DNI(Altprop):
     self.λ = λ
 
     self.gpu_id = gpu_id
+    self.ctr = 0
+    self.cumulative_grad_losses = 0
 
     # register backward hooks to all leaf modules in the network
     self.register_backward(self.network, self._backward_update_hook)
@@ -81,16 +83,17 @@ class DNI(Altprop):
         if 'hidden' in self.dni_networks_data[id(module)] else None
 
   def __create_backward_dni_nets(self, module, output):
+    log.info('Creating DNI net for ' + str(module))
     # the DNI network
     dni_params = { **self.dni_params, **{'module': module} } \
-      if hasattr(self.dni_params, 'module') else self.dni_params
+        if hasattr(self.dni_params, 'module') else self.dni_params
     self.dni_networks[id(module)] = self.dni_network(
         input_size=output.size(-1),
         hidden_size=self.hidden_size,
         output_size=output.size(-1),
         **dni_params
     )
-    setattr(self, 'dni_net_'+str(id(module)), self.dni_networks[id(module)])
+    setattr(self, 'dni_net_' + str(id(module)), self.dni_networks[id(module)])
 
     self.dni_networks_data[id(module)] = {}
     # the gradient module's (DNI network) optimizer
@@ -123,16 +126,8 @@ class DNI(Altprop):
 
   def __save_synthetic_gradient(self, module, grad_input):
     def hook(m, i, o):
-      if any(x is None for x in grad_input):
-        self.synthetic_grad_input[id(module)] = None
-        return
-      else:
-        # TODO: replace None grad_inputs with zero tensors?
-        i = tuple([x if x is not None else T.zeros(grad_input[ctr].size())
-                   for ctr, x in enumerate(i)])
-
-        if id(module) == id(m):
-          self.synthetic_grad_input[id(module)] = detach_all(i)
+      if id(module) == id(m):
+        self.synthetic_grad_input[id(module)] = detach_all(i)
     return hook
 
   def _backward_update_hook(self):
@@ -167,7 +162,7 @@ class DNI(Altprop):
 
       # BP(λ)
       predicted_grad = as_type(predicted_grad, grad_output[0])
-      grad = (1-self.λ) * predicted_grad + self.λ * grad_output[0]
+      grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
       self.backward_lock = True
       output.backward(grad.detach(), retain_graph=True)
       self.backward_lock = False
@@ -179,24 +174,28 @@ class DNI(Altprop):
       # backprop and update the DNI net
       loss.backward()
 
+      # track gradient losses
+      self.ctr += 1
+      self.cumulative_grad_losses = self.cumulative_grad_losses + loss.data.cpu().numpy()[0]
+      if self.ctr % 1000 == 0:
+        log.info('Average gradient loss last 1k steps: ' + str(self.cumulative_grad_losses / self.ctr))
+        self.cumulative_grad_losses = 0
+        self.ctr = 0
+
       # update parameters
       self.dni_networks_data[id(module)]['optim'].step()
       self.dni_networks_data[id(module)]['grad_optim'].step()
 
       # (back)propagate the (mixed) synthetic and original gradients
-      # if any(x is None for x in grad_input) or \
-      #         self.synthetic_grad_input[id(module)] is None:
-      #   grad_inputs = None
-      # else:
-      #   self.synthetic_grad_input[id(module)] = \
-      #       [x if type(x) is var else var(x) for x in self.synthetic_grad_input[id(module)]]
-      #   if self.gpu_id != -1:
-      #     self.synthetic_grad_input[id(module)] = [x.cuda(self.gpu_id) for x in self.synthetic_grad_input[id(module)]]
-
-      #   zipped = [(as_type(s, a), a)
-      #    for s, a in zip(self.synthetic_grad_input[id(module)], grad_input)]
-      #   grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach()) for (s, a) in zipped)
-      # return grad_inputs
+      if any(x is None for x in grad_input) or \
+              any(x is None for x in self.synthetic_grad_input[id(module)]) or \
+              self.synthetic_grad_input[id(module)] is None:
+        grad_inputs = None
+      else:
+        zipped = [(as_type(s, a), a)
+                  for s, a in zip(self.synthetic_grad_input[id(module)], grad_input)]
+        grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach()) for (s, a) in zipped)
+      return grad_inputs
 
     return hook
 
@@ -222,4 +221,3 @@ class DNI(Altprop):
     self.network.cuda(device_id)
     self.gpu_id = device_id
     return self
-

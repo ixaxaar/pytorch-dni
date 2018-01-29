@@ -78,6 +78,41 @@ def monkeypatch_forwards(net, callback, *args, **kwargs):
       cb = callback(module.forward, *args, **kwargs)
       setattr(module, 'forward', cb)
 
-
 def as_type(var1, ref):
-  return Variable(var1.data.type(ref.data.type()), requires_grad=True)
+  dtype = ref.data.__class__.__name__
+
+  if type(var1) is not Variable:
+    return var1
+  if dtype == 'FloatTensor':
+    return var1.float()
+  elif dtype == 'DoubleTensor':
+    return var1.double()
+  elif dtype == 'HalfTensor':
+    return var1.half()
+  elif dtype == 'ByteTensor':
+    return var1.byte()
+  elif dtype == 'CharTensor':
+    return var1.char()
+  elif dtype == 'ShortTensor':
+    return var1.short()
+  elif dtype == 'IntTensor':
+    return var1.int()
+  elif dtype == 'LongTensor':
+    return var1.long()
+  else:
+    return var1
+
+
+def register_nan_checks(model):
+  def check_grad(module, grad_input, grad_output):
+    if any(np.all(np.isnan(gi.data.cpu().numpy())) for gi in grad_input if gi is not None):
+      print('NaN gradient in grad_input ' + type(module).__name__)
+
+  model.apply(lambda module: module.register_backward_hook(check_grad))
+
+def check_if_gradients_propagate(model):
+  def check_grad(module, grad_input, grad_output):
+    print('Gradients propagating in module ', module)
+
+  model.apply(lambda module: module.register_backward_hook(check_grad))
+
