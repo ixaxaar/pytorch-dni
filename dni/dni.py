@@ -7,8 +7,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn as nn
 
-from .linear_dni import Linear_DNI
+from .linear_dni import LinearDNI
 from .util import *
+import copy
 
 
 class DNI(nn.Module):
@@ -17,6 +18,7 @@ class DNI(nn.Module):
       self,
       network,
       dni_network=None,
+      dni_params={},
       optim=None,
       grad_optim='adam',
       grad_lr=0.001,
@@ -27,7 +29,8 @@ class DNI(nn.Module):
     super(DNI, self).__init__()
 
     # the DNI network generator
-    self.dni_network = Linear_DNI if dni_network is None else dni_network
+    self.dni_network = LinearDNI if dni_network is None else dni_network
+    self.dni_params = dni_params
 
     # the network and optimizer for the entire network
     self.network = network
@@ -122,10 +125,13 @@ class DNI(nn.Module):
       # create DNI networks and optimizers if they dont exist (for this module)
       if id(module) not in list(self.dni_networks.keys()):
         # the DNI network
+        dni_params = { **self.dni_params, **{'module': module} } \
+          if hasattr(self.dni_params, 'module') else self.dni_params
         self.dni_networks[id(module)] = self.dni_network(
             input_size=output.size(-1),
             hidden_size=self.hidden_size,
-            output_size=output.size(-1)
+            output_size=output.size(-1),
+            **dni_params
         )
 
         self.dni_networks_data[id(module)] = {}
@@ -194,7 +200,7 @@ class DNI(nn.Module):
 
       # BP(λ)
       predicted_grad = as_type(predicted_grad, grad_output[0])
-      grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
+      grad = (1-self.λ) * predicted_grad + self.λ * grad_output[0]
       self.backward_lock = True
       output.backward(grad.detach(), retain_graph=True)
       self.backward_lock = False
@@ -211,19 +217,19 @@ class DNI(nn.Module):
       self.dni_networks_data[id(module)]['grad_optim'].step()
 
       # (back)propagate the (mixed) synthetic and original gradients
-      if any(x is None for x in grad_input) or \
-              self.synthetic_grad_input[id(module)] is None:
-        grad_inputs = None
-      else:
-        self.synthetic_grad_input[id(module)] = \
-            [x if type(x) is var else var(x) for x in self.synthetic_grad_input[id(module)]]
-        if self.gpu_id != -1:
-          self.synthetic_grad_input[id(module)] = [x.cuda(self.gpu_id) for x in self.synthetic_grad_input[id(module)]]
+      # if any(x is None for x in grad_input) or \
+      #         self.synthetic_grad_input[id(module)] is None:
+      #   grad_inputs = None
+      # else:
+      #   self.synthetic_grad_input[id(module)] = \
+      #       [x if type(x) is var else var(x) for x in self.synthetic_grad_input[id(module)]]
+      #   if self.gpu_id != -1:
+      #     self.synthetic_grad_input[id(module)] = [x.cuda(self.gpu_id) for x in self.synthetic_grad_input[id(module)]]
 
-        zipped = [(as_type(s, a), a)
-         for s, a in zip(self.synthetic_grad_input[id(module)], grad_input)]
-        grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach()) for (s, a) in zipped)
-      return grad_inputs
+      #   zipped = [(as_type(s, a), a)
+      #    for s, a in zip(self.synthetic_grad_input[id(module)], grad_input)]
+      #   grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach()) for (s, a) in zipped)
+      # return grad_inputs
 
     return hook
 

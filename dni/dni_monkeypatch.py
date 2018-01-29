@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn as nn
 
-from .linear_dni import Linear_DNI
+from .linear_dni import LinearDNI
 from .util import *
 import functools
 
@@ -29,7 +29,7 @@ class _DNI(nn.Module):
     super(_DNI, self).__init__()
 
     # the DNI network generator
-    self.dni_network = Linear_DNI if dni_network is None else dni_network
+    self.dni_network = LinearDNI if dni_network is None else dni_network
 
     # the network and optimizer for the entire network
     self.network = network
@@ -157,50 +157,56 @@ class _DNI(nn.Module):
     def hook(*input, **kwargs):
       module = forward.__self__
 
-      log.debug('Forward called for ' + str(module))
+      if self.training:
+        log.debug('Forward called for ' + str(module))
 
-      if id(module) not in list(self.grad_dni_networks.keys()) and self.decouple_forwards:
-        self.__create_forward_dni_nets(module, input)
+        if id(module) not in list(self.grad_dni_networks.keys()) and self.decouple_forwards:
+          self.__create_forward_dni_nets(module, input)
 
-      if id(module) in self.grad_dni_data:
-        self.grad_dni_data[id(module)]['optim'].zero_grad()
-        # self.grad_dni_data[id(module)]['grad_optim'].zero_grad()
+        if id(module) in self.grad_dni_data:
+          self.grad_dni_data[id(module)]['optim'].zero_grad()
+          # self.grad_dni_data[id(module)]['grad_optim'].zero_grad()
 
-      if self.decouple_forwards:
-        # pass through the input dni net
-        synthetic = ()
-        for ctr, i in enumerate(input):
-          si = self.input_dni_networks[id(module)][ctr](i)
-          synthetic + (si,)
-        gradless_input = synthetic
+        if self.decouple_forwards:
+          # pass through the input dni net
+          synthetic = ()
+          for ctr, i in enumerate(input):
+            si = self.input_dni_networks[id(module)][ctr](i)
+            synthetic + (si,)
+          gradless_input = synthetic
 
-      # forward pass the input
-      gradless_input = detach_all(input)
-      outputs = forward(*gradless_input, **kwargs)
-      output = format(outputs, module)
+        # forward pass the input
+        gradless_input = detach_all(input)
+        outputs = forward(*gradless_input, **kwargs)
+        output = format(outputs, module)
 
-      # create grad generating DNI networks and optimizers
-      # if they dont exist (for this module)
-      if id(module) not in list(self.grad_dni_networks.keys()):
-        self.__create_backward_dni_nets(module, output)
+        # create grad generating DNI networks and optimizers
+        # if they dont exist (for this module)
+        if id(module) not in list(self.grad_dni_networks.keys()):
+          self.__create_backward_dni_nets(module, output)
 
-      # store the synthetic gradient output during the backward pass
-      handle = self.__register_backward_hook(output, self.__save_synthetic_gradient(module))
+        # store the synthetic gradient output during the backward pass
+        handle = self.__register_backward_hook(output, self.__save_synthetic_gradient(module))
 
-      # pass through the DNI net
-      hx = self.__get_dni_hidden(module)
-      predicted_grad, hx = \
-        self.grad_dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
+        # pass through the DNI net
+        hx = self.__get_dni_hidden(module)
+        predicted_grad, hx = \
+          self.grad_dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
 
-      # backprop through the module and update params
-      self.backward_lock = True
-      output.backward(predicted_grad.detach())
-      self.backward_lock = False
-      self.grad_dni_data[id(module)]['optim'].step()
-      handle.remove()
+        # backprop through the module and update params
+        self.backward_lock = True
+        output.backward(predicted_grad.detach())
+        self.backward_lock = False
+        self.grad_dni_data[id(module)]['optim'].step()
+        handle.remove()
 
-      # save predicted_grad for backward
-      self.grad_dni_data[id(module)]['predicted_grad'].append(predicted_grad)
+        # save predicted_grad for backward
+        self.grad_dni_data[id(module)]['predicted_grad'].append(predicted_grad)
+
+      # for a four layer network (three hidden, one final classification) there will be three DNIs.
+      # make CNN DNI
+      # The spatial resolution of activations from layers in a CNN results in high dimensional activations, so we use synthetic gradient models which themselves are CNNs without pooling and with resolution-preserving zero-padding.
+      # change MNIST according to paper
 
       # is required if we need to backprop (and preserve the graph)
       grad_preserving_outputs = forward(*input, **kwargs)
@@ -233,12 +239,12 @@ class _DNI(nn.Module):
       # self.grad_dni_data[id(module)]['grad_optim'].step()
 
       # BP(λ) the synthetic gradients with the real ones and backprop
-      if synthetic_grad_input != []:
-        grad_inputs = tuple(((1 - self.λ) * (s if s is not None else a)) + \
-          (self.λ * a) for s, a in zip(synthetic_grad_input, grad_input))
-      else:
-        grad_inputs = None
-      return grad_inputs
+      # if synthetic_grad_input != []:
+      #   grad_inputs = tuple(((1 - self.λ) * (s if s is not None else a)) + \
+      #     (self.λ * a) for s, a in zip(synthetic_grad_input, grad_input))
+      # else:
+      #   grad_inputs = None
+      # return grad_inputs
 
     return hook
 

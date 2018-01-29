@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 
-from dni import DNI, Linear_DNI
+from dni import DNI, LinearDNI
 
 import data
 import model
@@ -116,7 +116,7 @@ def get_optim(lr):
   return optimizer
 
 optimizer = get_optim(args.lr)
-model = DNI(model, hidden_size=args.nhid, optim=optimizer, dni_network=Linear_DNI, λ=0.5)
+model = DNI(model, hidden_size=args.nhid, optim=optimizer, dni_network=LinearDNI, λ=0.5)
 
 if args.cuda:
   model.cuda(0)

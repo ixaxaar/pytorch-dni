@@ -62,7 +62,7 @@ def test_rnn_dni():
   )
 
   optimizer = optim.Adam(rnn.parameters(), lr=lr)
-  rnn = DNI(rnn, optim=optimizer, dni_network=RNN_DNI)
+  rnn = DNI(rnn, optim=optimizer, dni_network=RNNDNI)
   optimizer.zero_grad()
 
   input_data, target_output = generate_data(batch_size, length, input_size, cuda)
@@ -120,7 +120,7 @@ def test_linear_dni():
   )
 
   optimizer = optim.Adam(rnn.parameters(), lr=lr)
-  rnn = DNI(rnn, optim=optimizer, dni_network=Linear_DNI)
+  rnn = DNI(rnn, optim=optimizer, dni_network=LinearDNI)
   optimizer.zero_grad()
 
   input_data, target_output = generate_data(batch_size, length, input_size, cuda)
@@ -177,7 +177,7 @@ def test_linear_sigmoid_dni():
   )
 
   optimizer = optim.Adam(rnn.parameters(), lr=lr)
-  rnn = DNI(rnn, optim=optimizer, dni_network=Linear_Sigmoid_DNI)
+  rnn = DNI(rnn, optim=optimizer, dni_network=LinearSigmoidDNI)
   optimizer.zero_grad()
 
   input_data, target_output = generate_data(batch_size, length, input_size, cuda)
