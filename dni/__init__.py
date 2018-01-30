@@ -7,7 +7,6 @@ from .dni_monkeypatch import _DNI
 
 from .dni_nets import DNINetwork
 from .dni_nets import RNNDNI
-from .dni_nets import LinearDNI
-from .dni_nets import LinearSigmoidDNI
+from .dni_nets import LinearDNI, LinearBatchNormDNI, LinearSigmoidDNI
 
 from .util import detach_all

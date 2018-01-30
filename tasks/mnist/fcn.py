@@ -94,7 +94,7 @@ from dni import _DNI
 model = DNI(
   model,
   hidden_size=256,
-  dni_network=LinearDNI,
+  dni_network=LinearBatchNormDNI,
   λ=getattr(args, 'lambda'),
   grad_optim='adam',
   grad_lr=args.lr

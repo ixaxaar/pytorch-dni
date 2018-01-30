@@ -4,6 +4,5 @@
 
 from .network import DNINetwork
 from .rnn import RNNDNI
-from .linear import LinearDNI
-from .linear_sigmoid import LinearSigmoidDNI
+from .linear import LinearDNI, LinearBatchNormDNI, LinearSigmoidDNI
 

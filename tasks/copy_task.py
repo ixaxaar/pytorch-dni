@@ -178,7 +178,7 @@ if __name__ == '__main__':
     rnn = LSTMModel(
         args.input_size,
         args.nhid,
-        num_layers=args.nlayer,
+        num_layers=args.nhlayer,
         dropout=args.dropout,
         batch_first=True
     )
