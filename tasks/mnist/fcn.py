@@ -10,10 +10,17 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
+from dni import *
+from dni import _DNI
+
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
 parser.add_argument('--batch-size', type=int, default=64, metavar='N',
           help='input batch size for training (default: 64)')
+parser.add_argument('--num-layers', type=int, default=3, metavar='N',
+          help='input batch size for training (default: 64)')
+parser.add_argument('--dni-layers', type=str, default="0,1,2", metavar='N',
+          help='layers where to apply fcn (comma-separated string like 0,1,2) (default: "0,1,2")')
 parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
           help='input batch size for testing (default: 1000)')
 parser.add_argument('--epochs', type=int, default=100, metavar='N',
@@ -56,12 +63,15 @@ test_loader = torch.utils.data.DataLoader(
 image_size = 28
 
 class Net(nn.Module):
-  def __init__(self, num_layers=3, hidden_size=256):
+  def __init__(self, num_layers=3, hidden_size=256, dni_layers=[]):
     super(Net, self).__init__()
     self.num_layers = num_layers
     self.hidden_size = hidden_size
 
-    self.net = [self.layer(
+    self.net = [self.dni(self.layer(
+        image_size*image_size if l == 0 else hidden_size,
+        hidden_size
+    )) if l in dni_layers else self.layer(
         image_size*image_size if l == 0 else hidden_size,
         hidden_size
     ) for l in range(self.num_layers)]
@@ -77,6 +87,18 @@ class Net(nn.Module):
       nn.BatchNorm1d(hidden_size)
     )
 
+  def dni(self, layer):
+    dni = DNI(
+      layer,
+      hidden_size=256,
+      dni_network=LinearBatchNormDNI,
+      λ=getattr(args, 'lambda'),
+      grad_optim='adam',
+      grad_lr=args.lr,
+      gpu_id=0 if args.cuda else -1
+    )
+    return dni
+
   def forward(self, x):
     output = x.view(-1, image_size*image_size)
     for layer in self.net:
@@ -84,23 +106,13 @@ class Net(nn.Module):
     output = self.final(output)
     return F.log_softmax(output, dim=-1)
 
-model = Net()
+dni_layers = [int(x) for x in args.dni_layers.split(",")]
+model = Net(num_layers=args.num_layers, dni_layers=dni_layers)
 
-optimizer = optim.Adam(model.parameters(), lr=args.lr)
+optimizer = optim.Adam(model.final.parameters(), lr=args.lr)
 
-from dni import *
-from dni import _DNI
-
-model = DNI(
-  model,
-  hidden_size=256,
-  dni_network=LinearBatchNormDNI,
-  λ=getattr(args, 'lambda'),
-  grad_optim='adam',
-  grad_lr=args.lr
-)
 if args.cuda:
-  model.cuda(0)
+  model.cuda()
 
 def train(epoch):
   model.train()
@@ -112,7 +124,7 @@ def train(epoch):
     output = model(data)
     loss = F.nll_loss(output, target)
     loss.backward()
-    # optimizer.step()
+    optimizer.step()
     if batch_idx % args.log_interval == 0:
       print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
         epoch, batch_idx * len(data), len(train_loader.dataset),

@@ -217,7 +217,7 @@ class DNI(Altprop):
     log.debug("=============== Backward pass done =====================")
     return ret
 
-  def cuda(self, device_id):
+  def cuda(self, device=0):
     self.network.cuda(device_id)
     self.gpu_id = device_id
     return self

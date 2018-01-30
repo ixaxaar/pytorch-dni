@@ -50,7 +50,7 @@ class LinearBatchNormDNI(DNINetwork):
       bias=True
   ):
 
-    super(LinearDNI, self).__init__(input_size, hidden_size, output_size)
+    super(LinearBatchNormDNI, self).__init__(input_size, hidden_size, output_size)
 
     self.input_size = input_size
     self.hidden_size = hidden_size * 4
