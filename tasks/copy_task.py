@@ -27,6 +27,7 @@ from dnc import SDNC
 from dnc import SAM
 from test_lstm import LSTMModel
 from dni import *
+from dni import _DNI
 from dnc.util import *
 
 parser = argparse.ArgumentParser(description='PyTorch Differentiable Neural Computer')
@@ -177,7 +178,7 @@ if __name__ == '__main__':
     rnn = LSTMModel(
         args.input_size,
         args.nhid,
-        num_layers=args.nlayer,
+        num_layers=args.nhlayer,
         dropout=args.dropout,
         batch_first=True
     )
@@ -202,7 +203,7 @@ if __name__ == '__main__':
     optimizer = optim.Adadelta(rnn.parameters(), lr=args.lr)
 
   debug_enabled = hasattr(rnn, 'debug') and rnn.debug
-  rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=Linear_DNI, λ=0.5)
+  rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=LinearDNI, λ=0)
 
   if args.cuda != -1:
     rnn = rnn.cuda(args.cuda)

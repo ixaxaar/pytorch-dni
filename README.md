@@ -10,7 +10,13 @@
   - [From source](#from-source)
 - [Architecure](#architecure)
 - [Usage](#usage)
+  - [TLDR: Use DNI to optimize every leaf module](#tldr-use-dni-to-optimize-every-leaf-module-of-net-including-last-layer)
+  - [Apply DNI to custom layer](#apply-dni-to-custom-layer)
+  - [Apply custom DNI net](#apply-custom-dni-net)
+- [DNI Networks](#dni-networks)
+- [Custom DNI Networks](#custom-dni-networks)
 - [Tasks](#tasks)
+- [Notable stuff](#notable-stuff)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -37,15 +43,17 @@ pip install -e .
 
 ## Usage
 
+### TLDR: Use DNI to optimize every leaf module of `net` (including last layer)
+
 ```python
 from dni import DNI
 
-# Custom network, can be anything extending nn.Module
+# Parent network, can be anything extending nn.Module
 net = WhateverNetwork(**kwargs)
 opt = optim.Adam(net.parameters(), lr=0.001)
 
 # use DNI to optimize this network
-net = DNI(net, optim=opt)
+net = DNI(net, grad_optim='adam', grad_lr=0.0001)
 
 # after that we go about our business as usual
 for e in range(epoch):
@@ -59,13 +67,131 @@ for e in range(epoch):
 ...
 ```
 
+### Apply DNI to custom layer
+
+DNI can be applied to any class extending `nn.Module`.
+In this example we supply which layers to use DNI for, as the parameter `dni_layers`:
+
+```python
+
+from dni import *
+
+class Net(nn.Module):
+  def __init__(self, num_layers=3, hidden_size=256, dni_layers=[]):
+    super(Net, self).__init__()
+    self.num_layers = num_layers
+    self.hidden_size = hidden_size
+
+    self.net = [self.dni(self.layer(
+        image_size*image_size if l == 0 else hidden_size,
+        hidden_size
+    )) if l in dni_layers else self.layer(
+        image_size*image_size if l == 0 else hidden_size,
+        hidden_size
+    ) for l in range(self.num_layers)]
+    self.final = self.layer(hidden_size, 10)
+
+    # bind layers to this class (so that they're searchable by pytorch)
+    for ctr, n in enumerate(self.net):
+      setattr(self, 'layer'+str(ctr), n)
+
+  def layer(self, input_size, hidden_size):
+    return nn.Sequential(
+      nn.Linear(input_size, hidden_size),
+      nn.BatchNorm1d(hidden_size)
+    )
+
+  # create a DNI wrapper layer, recursive=False implies treat this layer as a leaf module
+  def dni(self, layer):
+    d = DNI(layer, hidden_size=256, grad_optim='adam', grad_lr=0.0001, recursive=False)
+    return d
+
+  def forward(self, x):
+    output = x.view(-1, image_size*image_size)
+    for layer in self.net:
+      output = F.relu(layer(output))
+    output = self.final(output)
+    return F.log_softmax(output, dim=-1)
+
+net = Net(num_layers=3, dni_layers=[1,2,3])
+
+# use the gradient descent to optimize layers not optimized by DNI
+opt = optim.Adam(net.final.parametes(), lr=0.001)
+
+# after that we go about our business as usual
+for e in range(epoch):
+  opt.zero_grad()
+  output = net(input)
+  loss = criterion(output, target_output)
+  loss.backward()
+```
+
+### Apply custom DNI net
+
+```python
+from dni import *
+
+# Custom DNI network
+class MyCustomDNI(DNINetwork):
+
+  def __init__(self, input_size, hidden_size, output_size, num_layers=2, bias=True):
+
+    super(LinearDNI, self).__init__(input_size, hidden_size, output_size)
+
+    self.input_size = input_size
+    self.hidden_size = hidden_size * 4
+    self.output_size = output_size
+    self.num_layers = num_layers
+    self.bias = bias
+
+    self.net = [self.layer(
+        input_size if l == 0 else self.hidden_size,
+        self.hidden_size
+    ) for l in range(self.num_layers)]
+
+    # bind layers to this class (so that they're searchable by pytorch)
+    for ctr, n in enumerate(self.net):
+      setattr(self, 'layer'+str(ctr), n)
+
+    # final layer (yeah, no kidding)
+    self.final = nn.Linear(self.hidden_size, output_size)
+
+  def layer(self, input_size, hidden_size):
+      return nn.Linear(input_size, hidden_size)
+
+  def forward(self, input, hidden):
+    output = input
+    for layer in self.net:
+      output = F.relu(layer(output))
+    output = self.final(output)
+
+    return output, None
+
+# Custom network, can be anything extending nn.Module
+net = WhateverNetwork(**kwargs)
+opt = optim.Adam(net.parameters(), lr=0.001)
+
+# use DNI to optimize this network with MyCustomDNI, pass custom params to the DNI nets
+net = DNI(net, grad_optim='adam', grad_lr=0.0001, dni_network=MyCustomDNI,
+      dni_params={'num_layers': 3, 'bias': True})
+
+# after that we go about our business as usual
+for e in range(epoch):
+  opt.zero_grad()
+  output = net(input, *args)
+  loss = criterion(output, target_output)
+  loss.backward()
+```
+
 ## DNI Networks
 
 This package ships with 3 types of DNI networks:
 
-- RNN_DNI: stacked `LSTM`s, `GRU`s or `RNN`s
-- Linear_DNI: 2-layer `Linear` modules
-- Linear_Sigmoid_DNI: 2-layer `Linear` followed by `Sigmoid`
+- [LinearDNI](./dni_nets/linear.py): `Linear -> ReLU` * num_layers -> `Linear`
+- [LinearSigmoidDNI](./dni_nets/linear.py): `Linear -> ReLU` * num_layers -> `Linear` -> `Sigmoid`
+- [LinearBatchNormDNI](./dni_nets/linear.py): `Linear -> BatchNorm1d -> ReLU` * num_layers -> `Linear`
+- [RNNDNI](./dni_nets/rnn.py): stacked `LSTM`s, `GRU`s or `RNN`s
+- [Conv2dDNI](./dni_nets/conv.py): `Conv2d -> BatchNorm2d -> MaxPool2d / AvgPool2d -> ReLU` * num_layers -> `Conv2d -> AvgPool2d`
 
 ## Custom DNI Networks
 

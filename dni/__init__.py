@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from .altprop import Altprop
 from .dni import DNI
+from .dni_monkeypatch import _DNI
 
-from .dni_network import DNI_Network
-from .rnn_dni import RNN_DNI
-from .linear_dni import Linear_DNI
-from .linear_sigmoid_dni import Linear_Sigmoid_DNI
+from .dni_nets import DNINetwork
+from .dni_nets import RNNDNI
+from .dni_nets import LinearDNI, LinearBatchNormDNI, LinearSigmoidDNI
+from .dni_nets import Conv2dDNI
 
-from .util import detach_all
+from .util import detach_all, get_padding

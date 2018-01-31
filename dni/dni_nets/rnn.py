@@ -4,10 +4,10 @@
 import torch as T
 import torch.nn as nn
 
-from .dni_network import DNI_Network
+from .network import DNINetwork
 
 
-class RNN_DNI(DNI_Network):
+class RNNDNI(DNINetwork):
 
   def __init__(
       self,
@@ -21,7 +21,7 @@ class RNN_DNI(DNI_Network):
       kind='lstm'
   ):
 
-    super(RNN_DNI, self).__init__(input_size, hidden_size, output_size)
+    super(RNNDNI, self).__init__(input_size, hidden_size, output_size)
     self.input_size = input_size
     self.hidden_size = hidden_size
     self.output_size = output_size
