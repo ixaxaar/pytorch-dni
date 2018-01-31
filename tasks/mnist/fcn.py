@@ -95,7 +95,8 @@ class Net(nn.Module):
       λ=getattr(args, 'lambda'),
       grad_optim='adam',
       grad_lr=args.lr,
-      gpu_id=0 if args.cuda else -1
+      gpu_id=0 if args.cuda else -1,
+      recursive=False
     )
     return dni
 

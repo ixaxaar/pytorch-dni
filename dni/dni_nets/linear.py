@@ -67,7 +67,6 @@ class LinearBatchNormDNI(DNINetwork):
     for ctr, n in enumerate(self.net):
       setattr(self, 'layer'+str(ctr), n)
 
-    # final layer (yeah, no kidding)
     self.final = nn.Linear(self.hidden_size, output_size)
 
   def layer(self, input_size, hidden_size): return nn.Sequential(

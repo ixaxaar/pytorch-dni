@@ -18,20 +18,25 @@ class Altprop(nn.Module):
     self.forward_hooks = []
     self.backward_hooks = []
 
-  def register_forward(self, network, hook):
-    for module in network.modules():
-      # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
-      l = 0
-      for x in module.children():
-        l += 1
-      p = sum([1 for x in module.parameters()])
+  def register_forward(self, network, hook, recursive=True):
+    # apply hook to supplied network only
+    if not recursive:
+      h = hook()
+      handle = network.register_forward_hook(h)
+      self.forward_hooks += [{"name": str(network), "id": id(network), "hook": handle}]
+    # recursively apply hook to leaf modules of the network
+    else:
+      for module in network.modules():
+        # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
+        children = sum([1 for x in module.children()])
+        params = sum([1 for x in module.parameters()])
 
-      if l == 0 and p > 0:
-        # register forward hooks
-        h = hook()
-        log.debug('Registering forward hooks for ' + str(module))
-        handle = module.register_forward_hook(h)
-        self.forward_hooks += [{"name": str(module), "id": id(module), "hook": handle}]
+        if children == 0 and params > 0:
+          # register forward hooks
+          h = hook()
+          log.debug('Registering forward hooks for ' + str(module))
+          handle = module.register_forward_hook(h)
+          self.forward_hooks += [{"name": str(module), "id": id(module), "hook": handle}]
 
   def unregister_forward(self):
     for h in self.forward_hooks:
@@ -43,20 +48,25 @@ class Altprop(nn.Module):
       h['hook'].remove()
     self.backward_hooks = []
 
-  def register_backward(self, network, hook):
-    for module in network.modules():
-      # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
-      l = 0
-      for x in module.children():
-        l += 1
-      p = sum([1 for x in module.parameters()])
+  def register_backward(self, network, hook, recursive=True):
+    # apply hook to supplied network only
+    if not recursive:
+      h = hook()
+      handle = network.register_backward_hook(h)
+      self.backward_hooks += [{"name": str(network), "id": id(network), "hook": handle}]
+    # recursively apply hook to leaf modules of the network
+    else:
+      for module in network.modules():
+        # register hooks only to leaf nodes in the graph with at least 1 learnable Parameter
+        children = sum([1 for x in module.children()])
+        params = sum([1 for x in module.parameters()])
 
-      if l == 0 and p > 0:
-        # register backward hooks
-        h = hook()
-        log.debug('Registering backward hooks for ' + str(module))
-        module.register_backward_hook(h)
-        self.backward_hooks += [{"name": str(module), "id": id(module), "hook": h}]
+        if children == 0 and params > 0:
+          # register backward hooks
+          h = hook()
+          log.debug('Registering backward hooks for ' + str(module))
+          module.register_backward_hook(h)
+          self.backward_hooks += [{"name": str(module), "id": id(module), "hook": h}]
 
   def __register_backward_hook(self, variable, hook):
     # for other hooks this is done in __call__ before forward

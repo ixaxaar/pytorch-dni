@@ -24,6 +24,7 @@ class DNI(Altprop):
       grad_lr=0.001,
       hidden_size=None,
       λ=0.5,
+      recursive=True,
       gpu_id=-1
   ):
     super(DNI, self).__init__()
@@ -58,12 +59,15 @@ class DNI(Altprop):
 
     self.λ = λ
 
+    # whether we should apply triggers recursively
+    self.recursive = recursive
+
     self.gpu_id = gpu_id
     self.ctr = 0
     self.cumulative_grad_losses = 0
 
     # register backward hooks to all leaf modules in the network
-    self.register_backward(self.network, self._backward_update_hook)
+    self.register_backward(self.network, self._backward_update_hook, recursive=self.recursive)
     log.debug(self.network)
     log.debug("=============== Hooks registered =====================")
 
@@ -205,7 +209,7 @@ class DNI(Altprop):
     for i, data in self.dni_networks_data.items():
       data['input'] = []
 
-    self.register_forward(self.network, self._forward_update_hook)
+    self.register_forward(self.network, self._forward_update_hook, recursive=self.recursive)
     ret = self.network(*args, **kwargs)
     self.unregister_forward()
     log.debug("=============== Forward pass done =====================")
