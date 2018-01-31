@@ -78,8 +78,10 @@ class Net(nn.Module):
     for ctr, n in enumerate(self.net):
       setattr(self, 'layer' + str(ctr), n)
 
-    self.fc1 = nn.Linear(self.filters * image_size * image_size, 50)
-    self.fc2 = nn.Linear(50, 10)
+    self.final = nn.Sequential(
+      nn.Linear(self.filters * image_size * image_size, 50),
+      nn.Linear(50, 10)
+    )
 
   def layer(self, in_filters, out_filters):
     return nn.Sequential(
@@ -109,18 +111,17 @@ class Net(nn.Module):
       output = F.relu(F.max_pool2d(layer(output), 2) if n == 0 else F.avg_pool2d(layer(output), 2))
 
     output = output.view(-1, self.filters * image_size * image_size)
-    output = self.fc2(self.fc1(output))
+    output = self.final(output)
     return F.log_softmax(output, dim=-1)
 
 
 dni_layers = [int(x) for x in args.dni_layers.split(",")]
 model = Net(filters=args.num_filters, num_layers=args.num_layers, dni_layers=dni_layers)
 
-optimizer = optim.Adam(model.parameters(), lr=args.lr)
+optimizer = optim.Adam(model.final.parameters(), lr=args.lr)
 
 if args.cuda:
   model.cuda()
-
 
 def train(epoch):
   model.train()
@@ -132,7 +133,7 @@ def train(epoch):
     output = model(data)
     loss = F.nll_loss(output, target)
     loss.backward()
-    # optimizer.step()
+    optimizer.step()
     if batch_idx % args.log_interval == 0:
       print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
           epoch, batch_idx * len(data), len(train_loader.dataset),

@@ -146,9 +146,10 @@ for e in range(epoch):
   output = net(input)
   loss = criterion(output, target_output)
   loss.backward()
+  opt.step()
 ```
 
-### Apply custom DNI net
+### Apply custom DNI net to all layers
 
 ```python
 from dni import *
@@ -204,6 +205,10 @@ for e in range(epoch):
   loss = criterion(output, target_output)
   loss.backward()
 ```
+
+### Apply custom DNI net to custom layers
+
+Oh come on.
 
 ## DNI Networks
 
