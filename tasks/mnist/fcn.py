@@ -88,7 +88,7 @@ class Net(nn.Module):
     )
 
   def dni(self, layer):
-    dni = DNI(
+    d = DNI(
       layer,
       hidden_size=256,
       dni_network=LinearBatchNormDNI,
@@ -98,7 +98,7 @@ class Net(nn.Module):
       gpu_id=0 if args.cuda else -1,
       recursive=False
     )
-    return dni
+    return d
 
   def forward(self, x):
     output = x.view(-1, image_size*image_size)

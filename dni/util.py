@@ -12,6 +12,7 @@ import numpy as np
 import logging
 import inspect
 from collections import OrderedDict
+from math import floor
 
 
 log = logging.getLogger('dni')
@@ -115,4 +116,9 @@ def check_if_gradients_propagate(model):
     print('Gradients propagating in module ', module)
 
   model.apply(lambda module: module.register_backward_hook(check_grad))
+
+
+def get_padding(input_dim, kernel_size, dilation, stride):
+  padding = floor((input_dim * stride + (kernel_size - 1) * dilation + 1)/2)
+  return padding
 

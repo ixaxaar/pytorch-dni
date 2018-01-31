@@ -87,7 +87,7 @@ class DNI(Altprop):
         if 'hidden' in self.dni_networks_data[id(module)] else None
 
   def __create_backward_dni_nets(self, module, output):
-    log.info('Creating DNI net for ' + str(module))
+    log.debug('Creating DNI net for ' + str(module))
     # the DNI network
     dni_params = { **self.dni_params, **{'module': module} } \
         if hasattr(self.dni_params, 'module') else self.dni_params
@@ -98,6 +98,7 @@ class DNI(Altprop):
         **dni_params
     )
     setattr(self, 'dni_net_' + str(id(module)), self.dni_networks[id(module)])
+    log.debug('Created DNI net: \n' + str(self.dni_networks[id(module)]))
 
     self.dni_networks_data[id(module)] = {}
     # the gradient module's (DNI network) optimizer
