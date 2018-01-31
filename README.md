@@ -10,6 +10,7 @@
   - [From source](#from-source)
 - [Architecure](#architecure)
 - [Usage](#usage)
+  - [Constructor Parameters](#constructor-parameters)
   - [TLDR: Use DNI to optimize every leaf module of `net` (including last layer)](#tldr-use-dni-to-optimize-every-leaf-module-of-net-including-last-layer)
   - [Apply DNI to custom layer](#apply-dni-to-custom-layer)
   - [Apply custom DNI net](#apply-custom-dni-net)
