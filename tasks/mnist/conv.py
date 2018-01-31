@@ -72,7 +72,7 @@ class Net(nn.Module):
     self.padding = get_padding(image_size, kernel_size, 1, 1)
 
     self.net = [self.dni(self.layer(1 if l == 0 else filters, filters)) if l in dni_layers else self.layer(
-        filters) for l in range(self.num_layers)]
+        1 if l == 0 else filters, filters) for l in range(self.num_layers)]
 
     # bind layers to this class (so that they're searchable by pytorch)
     for ctr, n in enumerate(self.net):
@@ -115,10 +115,13 @@ class Net(nn.Module):
     return F.log_softmax(output, dim=-1)
 
 
-dni_layers = [int(x) for x in args.dni_layers.split(",")]
+dni_layers = [int(x) for x in args.dni_layers.split(",")] if args.dni_layers != '' else []
 model = Net(filters=args.num_filters, num_layers=args.num_layers, dni_layers=dni_layers)
 
-optimizer = optim.Adam(model.final.parameters(), lr=args.lr)
+final_layer_opt = optim.Adam(model.final.parameters(), lr=args.lr)
+non_dni_layers = set(range(model.num_layers)).difference(dni_layers)
+non_dni_layers_opt = [optim.Adam(model.net[layer].parameters(), lr=args.lr) for layer in non_dni_layers]
+
 
 if args.cuda:
   model.cuda()
@@ -129,11 +132,17 @@ def train(epoch):
     if args.cuda:
       data, target = data.cuda(), target.cuda()
     data, target = Variable(data), Variable(target)
-    optimizer.zero_grad()
+
+    final_layer_opt.zero_grad()
+    [ x.zero_grad() for x in non_dni_layers_opt ]
+
     output = model(data)
     loss = F.nll_loss(output, target)
     loss.backward()
-    optimizer.step()
+
+    final_layer_opt.step()
+    [ x.step() for x in non_dni_layers_opt ]
+
     if batch_idx % args.log_interval == 0:
       print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
           epoch, batch_idx * len(data), len(train_loader.dataset),

@@ -107,10 +107,14 @@ class Net(nn.Module):
     output = self.final(output)
     return F.log_softmax(output, dim=-1)
 
-dni_layers = [int(x) for x in args.dni_layers.split(",")]
+
+dni_layers = [int(x) for x in args.dni_layers.split(",")] if args.dni_layers != '' else []
 model = Net(num_layers=args.num_layers, dni_layers=dni_layers)
 
-optimizer = optim.Adam(model.final.parameters(), lr=args.lr)
+final_layer_opt = optim.Adam(model.final.parameters(), lr=args.lr)
+non_dni_layers = set(range(model.num_layers)).difference(dni_layers)
+non_dni_layers_opt = [optim.Adam(model.net[layer].parameters(), lr=args.lr) for layer in non_dni_layers]
+
 
 if args.cuda:
   model.cuda()
@@ -121,11 +125,17 @@ def train(epoch):
     if args.cuda:
       data, target = data.cuda(), target.cuda()
     data, target = Variable(data), Variable(target)
-    optimizer.zero_grad()
+
+    final_layer_opt.zero_grad()
+    [ x.zero_grad() for x in non_dni_layers_opt ]
+
     output = model(data)
     loss = F.nll_loss(output, target)
     loss.backward()
-    optimizer.step()
+
+    final_layer_opt.step()
+    [ x.step() for x in non_dni_layers_opt ]
+
     if batch_idx % args.log_interval == 0:
       print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
         epoch, batch_idx * len(data), len(train_loader.dataset),
