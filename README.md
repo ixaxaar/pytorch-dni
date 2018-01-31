@@ -195,22 +195,32 @@ This package ships with 3 types of DNI networks:
 
 ## Custom DNI Networks
 
-Custom DNI nets can be created using the `DNI_Network` interface:
+Custom DNI nets can be created using the `DNINetwork` interface:
 
 ```python
-class MyDNI(DNI_Network):
+from dni import *
+
+class MyDNI(DNINetwork):
   def __init__(self, input_size, hidden_size, output_size, **kwargs):
     super(MyDNI, self).__init__(input_size, hidden_size, output_size)
-
-    self.net = { ... your custom net }
     ...
 
   def forward(self, input, hidden):
-    return self.net(input), None # return (output, hidden), hidden can be None
-
+    ...
+    return output, hidden
 ```
 
 ## Tasks
+
+### MNIST (FCN and CNN)
+
+Refer to [tasks/mnist/README.md](tasks/mnist/README.md)
+
+### Language model
+
+Refer to [tasks/word_language_model/README.md](tasks/word_language_model/README.md)
+
+### Copy task
 
 The tasks included in this project are the same as those in [pytorch-dnc](https://github.com/ixaxaar/pytorch-dnc#tasks), except that they're trained here using DNI.
 
