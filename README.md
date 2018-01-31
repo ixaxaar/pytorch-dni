@@ -10,12 +10,15 @@
   - [From source](#from-source)
 - [Architecure](#architecure)
 - [Usage](#usage)
-  - [TLDR: Use DNI to optimize every leaf module](#tldr-use-dni-to-optimize-every-leaf-module-of-net-including-last-layer)
+  - [TLDR: Use DNI to optimize every leaf module of `net` (including last layer)](#tldr-use-dni-to-optimize-every-leaf-module-of-net-including-last-layer)
   - [Apply DNI to custom layer](#apply-dni-to-custom-layer)
   - [Apply custom DNI net](#apply-custom-dni-net)
 - [DNI Networks](#dni-networks)
 - [Custom DNI Networks](#custom-dni-networks)
 - [Tasks](#tasks)
+  - [MNIST (FCN and CNN)](#mnist-fcn-and-cnn)
+  - [Language model](#language-model)
+  - [Copy task](#copy-task)
 - [Notable stuff](#notable-stuff)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
