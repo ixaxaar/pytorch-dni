@@ -46,6 +46,24 @@ pip install -e .
 
 ## Usage
 
+### Constructor Parameters
+
+Following are the constructor parameters of `DNI`:
+
+
+| Argument | Default | Description |
+| --- | --- | --- |
+| network | NA | Network to be optimized |
+| dni_network | None | DNI network class |
+| dni_params | {} | Parameters to be passed to the dni_network constructor |
+| optim | None | optimizer for the network |
+| grad_optim | 'adam' | DNI module optimizer |
+| grad_lr | 0.001 | DNI learning rate |
+| hidden_size | 10 | hidden size of the DNI network |
+| λ | 0.5 | How muc to mix backprop and synthetic gradients (0 = synthetic only, 1 = backprop only) |
+| recursive | True | whether to optimize leaf modules or treat network as a leaf module |
+| gpu_id | -1 | GPU ID |
+
 ### TLDR: Use DNI to optimize every leaf module of `net` (including last layer)
 
 ```python
