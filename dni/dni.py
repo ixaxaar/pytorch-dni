@@ -9,6 +9,7 @@ import torch.nn as nn
 
 from .util import *
 from .altprop import Altprop
+from .dni_nets import LinearDNI
 import copy
 
 

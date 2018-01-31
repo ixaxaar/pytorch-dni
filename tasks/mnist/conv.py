@@ -32,8 +32,8 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
-parser.add_argument('--lambda', type=int, default=0.2, metavar='S',
-                    help='lambda for DNI: fraction of backprop gradient to mix (default: 0.2)')
+parser.add_argument('--lambda', type=int, default=0.0, metavar='S',
+                    help='lambda for DNI: fraction of backprop gradient to mix (default: 0.0)')
 parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                     help='how many batches to wait before logging training status')
 args = parser.parse_args()
