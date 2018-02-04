@@ -151,14 +151,7 @@ class CDNI(DNI):
         grad = predicted_grad
 
       self.backward_lock = True
-      last_dim = output.size(-1)
-      nr_dims = len(output.size())
-      if nr_dims == 2:
-        concated[:, :last_dim].backward(grad.detach(), retain_graph=True)
-      if nr_dims == 3:
-        concated[:, :, :last_dim].backward(grad.detach(), retain_graph=True)
-      if nr_dims == 4:
-        concated[:, :, :, :last_dim].backward(grad.detach(), retain_graph=True)
+      concated.backward(self.__concat_label(grad, self.target.size()).detach(), retain_graph=True)
       handle.remove()
 
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
