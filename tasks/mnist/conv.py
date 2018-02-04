@@ -122,7 +122,7 @@ class Net(nn.Module):
         )
     return d
 
-  def forward(self, input, target):
+  def forward(self, input, target=None):
     output = input
     for n, layer in enumerate(self.net):
       if args.cdni:
@@ -180,7 +180,10 @@ def test():
     if args.cuda:
       data, target = data.cuda(), target.cuda()
     data, target = Variable(data, volatile=True), Variable(target)
-    output = model(data)
+    if args.cdni:
+      output = model(data, target=None)
+    else:
+      output = model(data)
     test_loss += F.nll_loss(output, target, size_average=False).data[0]  # sum up batch loss
     pred = output.data.max(1, keepdim=True)[1]  # get the index of the max log-probability
     correct += pred.eq(target.data.view_as(pred)).cpu().sum()

@@ -126,7 +126,8 @@ class DNI(Altprop):
       if id(module) not in list(self.dni_networks.keys()):
         self.__create_backward_dni_nets(module, output)
 
-      self.dni_networks_data[id(module)]['input'].append(detach_all(input))
+      if self.training:
+        self.dni_networks_data[id(module)]['input'].append(detach_all(input))
 
     return hook
 

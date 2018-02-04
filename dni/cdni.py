@@ -49,37 +49,7 @@ class CDNI(DNI):
     self.targets = []
 
     self._DNI__format = self.__format
-    log.info('Also conditioning the DNI upon the input')
-
-  def __create_backward_dni_nets(self, module, input, output):
-    log.debug('Creating DNI net for ' + str(module))
-    # the DNI network
-    dni_params = { **self.dni_params, **{'module': module} } \
-        if hasattr(self.dni_params, 'module') else self.dni_params
-    self.dni_networks[id(module)] = self.dni_network(
-        input_size=input.size(-1),
-        hidden_size=self.hidden_size,
-        output_size=output.size(-1),
-        **dni_params
-    )
-    setattr(self, 'dni_net_' + str(id(module)), self.dni_networks[id(module)])
-    log.debug('Created DNI net: \n' + str(self.dni_networks[id(module)]))
-
-    self.dni_networks_data[id(module)] = {}
-    # the gradient module's (DNI network) optimizer
-    self.dni_networks_data[id(module)]['grad_optim'] = \
-        self.get_optim(self.dni_networks[id(module)].parameters(), otype=self.grad_optim, lr=self.lr)
-
-    # the network module's optimizer
-    self.dni_networks_data[id(module)]['optim'] = \
-        self.get_optim(module.parameters(), otype=self.optim, lr=self.lr)
-
-    # store the DNI outputs (synthetic gradients) here for calculating loss during backprop
-    self.dni_networks_data[id(module)]['input'] = []
-    self.synthetic_grad_input[id(module)] = None
-
-    if self.gpu_id != -1:
-      self.dni_networks[id(module)] = self.dni_networks[id(module)].cuda(self.gpu_id)
+    log.info('Also conditioning the DNI upon the target')
 
   def __adjust_label_size(self, label, ref):
     # expand the labels according the the reference Size
@@ -124,7 +94,8 @@ class CDNI(DNI):
       else:
         self.target = self.targets.pop()
     else:
-      raise ValueError('target not passed, try something like `net(inputs, ..., target=target)`')
+      if self.training:
+        raise ValueError('target not passed, try something like `net(inputs, ..., target=target)`')
 
     log.debug("=============== Forward pass starting =====================")
     # clear out all buffers
