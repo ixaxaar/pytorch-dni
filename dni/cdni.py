@@ -25,6 +25,7 @@ class CDNI(DNI):
       grad_optim='adam',
       grad_lr=0.001,
       hidden_size=10,
+      λ=0,
       target_size=T.Size([1]),
       recursive=True,
       gpu_id=-1
@@ -41,17 +42,14 @@ class CDNI(DNI):
       grad_optim=grad_optim,
       grad_lr=grad_lr,
       hidden_size=hidden_size,
-      λ=0,
+      λ=λ,
       recursive=recursive,
       gpu_id=gpu_id
     )
     self.targets = []
 
-    # inherit required private methods
-    # self.__get_dni_hidden = self._DNI
-    # self.__save_synthetic_gradient = self._DNI__save_synthetic_gradient
-
     self._DNI__format = self.__format
+    log.info('Also conditioning the DNI upon the input')
 
   def __create_backward_dni_nets(self, module, input, output):
     log.debug('Creating DNI net for ' + str(module))

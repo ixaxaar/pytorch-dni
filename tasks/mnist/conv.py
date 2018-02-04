@@ -8,7 +8,6 @@ from torchvision import datasets, transforms
 from torch.autograd import Variable
 
 from dni import *
-from dni import _DNI
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -20,6 +19,7 @@ parser.add_argument('--num-filters', type=int, default=32, metavar='N',
                     help='number of filters for the conv layers (default: 32)')
 parser.add_argument('--dni-layers', type=str, default="0,1,2", metavar='N',
                     help='layers where to apply fcn (comma-separated string like 0,1,2) (default: "0,1,2")')
+parser.add_argument('--cdni', action='store_true', help='use conditional DNI')
 parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                     help='input batch size for testing (default: 1000)')
 parser.add_argument('--epochs', type=int, default=100, metavar='N',
@@ -91,27 +91,46 @@ class Net(nn.Module):
     )
 
   def dni(self, layer):
-    d = CDNI(
-        layer,
-        hidden_size=256,
-        dni_network=Conv2dDNI,
-        dni_params={'convolutions': self.filters,
-                    'kernel_size': kernel_size,
-                    'num_layers': 2, 'padding': 'SAME'},
-        # λ=getattr(args, 'lambda'),
-        grad_optim='adam',
-        grad_lr=args.lr,
-        gpu_id=0 if args.cuda else -1,
-        recursive=False,
-        target_size=torch.Size([args.batch_size, image_size, image_size])
-    )
+    if args.cdni:
+      d = CDNI(
+          layer,
+          hidden_size=256,
+          dni_network=Conv2dDNI,
+          dni_params={'convolutions': self.filters,
+                      'kernel_size': kernel_size,
+                      'num_layers': 2, 'padding': 'SAME'},
+          λ=getattr(args, 'lambda'),
+          grad_optim='adam',
+          grad_lr=args.lr,
+          gpu_id=0 if args.cuda else -1,
+          recursive=False,
+          target_size=torch.Size([args.batch_size, image_size, image_size])
+      )
+    else:
+      d = DNI(
+            layer,
+            hidden_size=256,
+            dni_network=Conv2dDNI,
+            dni_params={'convolutions': self.filters,
+                        'kernel_size': kernel_size,
+                        'num_layers': 2, 'padding': 'SAME'},
+            λ=getattr(args, 'lambda'),
+            grad_optim='adam',
+            grad_lr=args.lr,
+            gpu_id=0 if args.cuda else -1,
+            recursive=False
+        )
     return d
 
   def forward(self, input, target):
     output = input
     for n, layer in enumerate(self.net):
-      output = F.relu(F.max_pool2d(layer(output, target=target), 2) if n == 0 and n in self.dni_layers
+      if args.cdni:
+        output = F.relu(F.max_pool2d(layer(output, target=target), 2) if n == 0 and n in self.dni_layers
                       else F.avg_pool2d(layer(output, target=target), 2))
+      else:
+        output = F.relu(F.max_pool2d(layer(output), 2) if n == 0 and n in self.dni_layers
+                        else F.avg_pool2d(layer(output), 2))
 
     output = output.view(-1, self.filters * image_size * image_size)
     output = self.final(output)
