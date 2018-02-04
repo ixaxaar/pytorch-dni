@@ -122,3 +122,10 @@ def get_padding(input_dim, kernel_size, dilation, stride):
   padding = floor((input_dim * stride + (kernel_size - 1) * dilation + 1)/2)
   return padding
 
+
+def cuda(x, grad=False, gpu_id=-1):
+  if gpu_id == -1:
+    return Variable(x, requires_grad=grad)
+  else:
+    return Variable(x.pin_memory(), requires_grad=grad).cuda(gpu_id, async=True)
+

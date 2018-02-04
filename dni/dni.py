@@ -136,6 +136,9 @@ class DNI(Altprop):
         self.synthetic_grad_input[id(module)] = detach_all(i)
     return hook
 
+  def __format(self, outputs, module):
+    return format(outputs, module)
+
   def _backward_update_hook(self):
     def hook(module, grad_input, grad_output):
       if self.backward_lock:
@@ -159,7 +162,7 @@ class DNI(Altprop):
 
       # forward pass through the module alone
       outputs = module(*input)
-      output = format(outputs, module)
+      output = self.__format(outputs, module)
 
       # pass through the DNI net
       hx = self.__get_dni_hidden(module)
@@ -168,7 +171,11 @@ class DNI(Altprop):
 
       # BP(λ)
       predicted_grad = as_type(predicted_grad, grad_output[0])
-      grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
+      if self.λ > 0:
+        grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
+      else:
+        grad = predicted_grad
+
       self.backward_lock = True
       output.backward(grad.detach(), retain_graph=True)
       self.backward_lock = False

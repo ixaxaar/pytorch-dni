@@ -3,6 +3,7 @@
 
 from .altprop import Altprop
 from .dni import DNI
+from .cdni import CDNI
 from .dni_monkeypatch import _DNI
 
 from .dni_nets import DNINetwork
