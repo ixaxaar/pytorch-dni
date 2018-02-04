@@ -69,6 +69,7 @@ class Net(nn.Module):
     super(Net, self).__init__()
     self.num_layers = num_layers
     self.filters = filters
+    self.dni_layers = dni_layers
     self.padding = get_padding(image_size, kernel_size, 1, 1)
 
     self.net = [self.dni(self.layer(1 if l == 0 else filters, filters)) if l in dni_layers else self.layer(
@@ -79,8 +80,8 @@ class Net(nn.Module):
       setattr(self, 'layer' + str(ctr), n)
 
     self.final = nn.Sequential(
-      nn.Linear(self.filters * image_size * image_size, 50),
-      nn.Linear(50, 10)
+        nn.Linear(self.filters * image_size * image_size, 50),
+        nn.Linear(50, 10)
     )
 
   def layer(self, in_filters, out_filters):
@@ -90,25 +91,27 @@ class Net(nn.Module):
     )
 
   def dni(self, layer):
-    d = DNI(
+    d = CDNI(
         layer,
         hidden_size=256,
         dni_network=Conv2dDNI,
         dni_params={'convolutions': self.filters,
                     'kernel_size': kernel_size,
                     'num_layers': 2, 'padding': 'SAME'},
-        λ=getattr(args, 'lambda'),
+        # λ=getattr(args, 'lambda'),
         grad_optim='adam',
         grad_lr=args.lr,
         gpu_id=0 if args.cuda else -1,
-        recursive=False
+        recursive=False,
+        target_size=torch.Size([args.batch_size, image_size, image_size])
     )
     return d
 
-  def forward(self, input):
+  def forward(self, input, target):
     output = input
     for n, layer in enumerate(self.net):
-      output = F.relu(F.max_pool2d(layer(output), 2) if n == 0 else F.avg_pool2d(layer(output), 2))
+      output = F.relu(F.max_pool2d(layer(output, target=target), 2) if n == 0 and n in self.dni_layers
+                      else F.avg_pool2d(layer(output, target=target), 2))
 
     output = output.view(-1, self.filters * image_size * image_size)
     output = self.final(output)
@@ -126,6 +129,7 @@ non_dni_layers_opt = [optim.Adam(model.net[layer].parameters(), lr=args.lr) for 
 if args.cuda:
   model.cuda()
 
+
 def train(epoch):
   model.train()
   for batch_idx, (data, target) in enumerate(train_loader):
@@ -134,14 +138,14 @@ def train(epoch):
     data, target = Variable(data), Variable(target)
 
     final_layer_opt.zero_grad()
-    [ x.zero_grad() for x in non_dni_layers_opt ]
+    [x.zero_grad() for x in non_dni_layers_opt]
 
-    output = model(data)
+    output = model(data, target=target)
     loss = F.nll_loss(output, target)
     loss.backward()
 
     final_layer_opt.step()
-    [ x.step() for x in non_dni_layers_opt ]
+    [x.step() for x in non_dni_layers_opt]
 
     if batch_idx % args.log_interval == 0:
       print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
