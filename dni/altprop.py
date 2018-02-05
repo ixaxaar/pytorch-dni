@@ -18,7 +18,10 @@ class Altprop(nn.Module):
     self.forward_hooks = []
     self.backward_hooks = []
 
-  def register_forward(self, network, hook, recursive=True):
+  def register_forward(self, network, hook, recursive=True, skip_last_layer=True):
+    if skip_last_layer:
+      last_layer = self.__find_last_layer(network)
+
     # apply hook to supplied network only
     if not recursive:
       h = hook()
@@ -32,6 +35,8 @@ class Altprop(nn.Module):
         params = sum([1 for x in module.parameters()])
 
         if children == 0 and params > 0:
+          if skip_last_layer and id(module) == id(last_layer):
+            return
           # register forward hooks
           h = hook()
           log.debug('Registering forward hooks for ' + str(module))
@@ -48,7 +53,20 @@ class Altprop(nn.Module):
       h['hook'].remove()
     self.backward_hooks = []
 
-  def register_backward(self, network, hook, recursive=True):
+  def __find_last_layer(self, network):
+    # Find out the last layer / leaf module module
+    last_layer = None
+    for module in network.modules():
+      children = sum([1 for x in module.children()])
+      params = sum([1 for x in module.parameters()])
+      if children == 0 and params > 0:
+        last_layer = module
+    return last_layer
+
+  def register_backward(self, network, hook, recursive=True, skip_last_layer=True):
+    if skip_last_layer:
+      last_layer = self.__find_last_layer(network)
+
     # apply hook to supplied network only
     if not recursive:
       h = hook()
@@ -62,6 +80,8 @@ class Altprop(nn.Module):
         params = sum([1 for x in module.parameters()])
 
         if children == 0 and params > 0:
+          if skip_last_layer and id(module) == id(last_layer):
+            return last_layer
           # register backward hooks
           h = hook()
           log.debug('Registering backward hooks for ' + str(module))

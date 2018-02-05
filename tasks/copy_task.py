@@ -189,21 +189,22 @@ if __name__ == '__main__':
 
   last_save_losses = []
 
+  rnn = DNI(rnn, hidden_size=args.nhid, grad_optim=args.optim, grad_lr=args.lr, dni_network=LinearDNI, λ=0)
+
   if args.optim == 'adam':
-    optimizer = optim.Adam(rnn.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
+    optimizer = optim.Adam(rnn.last_layer.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
   elif args.optim == 'adamax':
-    optimizer = optim.Adamax(rnn.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
+    optimizer = optim.Adamax(rnn.last_layer.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
   elif args.optim == 'rmsprop':
-    optimizer = optim.RMSprop(rnn.parameters(), lr=args.lr, momentum=0.9, eps=1e-10)  # 0.0001
+    optimizer = optim.RMSprop(rnn.last_layer.parameters(), lr=args.lr, momentum=0.9, eps=1e-10)  # 0.0001
   elif args.optim == 'sgd':
-    optimizer = optim.SGD(rnn.parameters(), lr=args.lr)  # 0.01
+    optimizer = optim.SGD(rnn.last_layer.parameters(), lr=args.lr)  # 0.01
   elif args.optim == 'adagrad':
-    optimizer = optim.Adagrad(rnn.parameters(), lr=args.lr)
+    optimizer = optim.Adagrad(rnn.last_layer.parameters(), lr=args.lr)
   elif args.optim == 'adadelta':
-    optimizer = optim.Adadelta(rnn.parameters(), lr=args.lr)
+    optimizer = optim.Adadelta(rnn.last_layer.parameters(), lr=args.lr)
 
   debug_enabled = hasattr(rnn, 'debug') and rnn.debug
-  rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=LinearDNI, λ=0)
 
   if args.cuda != -1:
     rnn = rnn.cuda(args.cuda)
@@ -227,7 +228,7 @@ if __name__ == '__main__':
     loss.backward()
 
     T.nn.utils.clip_grad_norm(rnn.parameters(), args.clip)
-    # optimizer.step()
+    optimizer.step()
     loss_value = loss.data[0]
 
     summarize = (epoch % summarize_freq == 0)
