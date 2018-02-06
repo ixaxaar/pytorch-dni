@@ -72,12 +72,16 @@ def is_leaf(module):
 
   return l == 0 and p > 0
 
-def monkeypatch_forwards(net, callback, *args, **kwargs):
+def for_all_leaves(net):
   for module in net.modules():
     if is_leaf(module):
-      log.debug('Monkeypatching forward for ' + str(module))
-      cb = callback(module.forward, *args, **kwargs)
-      setattr(module, 'forward', cb)
+      yield module
+
+def monkeypatch_forwards(net, callback, *args, **kwargs):
+  for module in for_all_leaves(net):
+    log.debug('Monkeypatching forward for ' + str(module))
+    cb = callback(module.forward, *args, **kwargs)
+    setattr(module, 'forward', cb)
 
 def as_type(var1, ref):
   dtype = ref.data.__class__.__name__
