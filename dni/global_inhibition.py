@@ -104,7 +104,7 @@ class GlobalInhibition(Altprop):
     return ret
 
   def cuda(self, device_id=0):
-    self.network.cuda(device_id)
+    self.network = self.network.cuda(device_id)
     self.inhibitory_network = self.inhibitory_network.cuda(device_id)
     self.gpu_id = device_id
     return self

@@ -117,7 +117,7 @@ class Mirror(Altprop):
     return ret
 
   def cuda(self, device_id=0):
-    self.network.cuda(device_id)
+    self.network = self.network.cuda(device_id)
     self.mirror_networks = { k: v.cuda(device_id) for k,v in self.mirror_networks.items()}
     self.gpu_id = device_id
     return self
