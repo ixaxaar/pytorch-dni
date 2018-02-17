@@ -189,6 +189,9 @@ if __name__ == '__main__':
 
   last_save_losses = []
 
+  rnn = Mirror(rnn, mirror_optim=args.optim, mirror_lr=args.lr, λ=0)
+  print(rnn)
+
   if args.optim == 'adam':
     optimizer = optim.Adam(rnn.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
   elif args.optim == 'adamax':
@@ -204,7 +207,6 @@ if __name__ == '__main__':
 
   debug_enabled = hasattr(rnn, 'debug') and rnn.debug
   # rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=LinearDNI, λ=0)
-  # rnn = Mirror(rnn, optim=optimizer, λ=0)
 
   if args.cuda != -1:
     rnn = rnn.cuda(args.cuda)
@@ -228,7 +230,7 @@ if __name__ == '__main__':
     loss.backward()
 
     T.nn.utils.clip_grad_norm(rnn.parameters(), args.clip)
-    # optimizer.step()
+    optimizer.step()
     loss_value = loss.data[0]
 
     summarize = (epoch % summarize_freq == 0)

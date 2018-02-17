@@ -15,6 +15,8 @@ from collections import OrderedDict
 from math import floor
 
 
+δ = 1e-6
+
 log = logging.getLogger('dni')
 log.setLevel(logging.INFO)
 # create file handler which logs even debug messages
