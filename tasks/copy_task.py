@@ -189,6 +189,7 @@ if __name__ == '__main__':
   else:
     raise Exception('Not recognized type of memory')
 
+  debug_enabled = hasattr(rnn, 'debug') and rnn.debug
   # register_nan_checks(rnn)
 
   last_save_losses = []
@@ -197,8 +198,10 @@ if __name__ == '__main__':
     rnn = GlobalInhibition(rnn, inhibitory_network=InhibitoryModel(args.input_size, args.nhid, 2, 0.2))
   elif args.optim_type == 'mirror':
     rnn = Mirror(rnn)
+  elif args.optim_type == 'ldni':
+    rnn = LDNI(rnn, grad_network=LinearDNI, hidden_size=args.nhid, optim_type=args.optim, lr=args.lr)
   elif args.optim_type == 'dni':
-    pass
+    rnn = DNI(rnn, hidden_size=args.nhid, grad_optim=args.optim, grad_lr=args.lr, dni_network=LinearDNI, λ=0)
   else:
     raise Exception("Specify correct optim_type")
   print(rnn)
@@ -215,10 +218,6 @@ if __name__ == '__main__':
     optimizer = optim.Adagrad(rnn.parameters(), lr=args.lr)
   elif args.optim == 'adadelta':
     optimizer = optim.Adadelta(rnn.parameters(), lr=args.lr)
-
-  debug_enabled = hasattr(rnn, 'debug') and rnn.debug
-  if args.optim_type == 'dni':
-    rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=LinearDNI, λ=0)
 
   if args.cuda != -1:
     rnn = rnn.cuda(args.cuda)
@@ -238,6 +237,9 @@ if __name__ == '__main__':
       output, (chx, mhx, rv) = rnn(input_data, (None, mhx, None), reset_experience=True, pass_through_memory=True)
 
     loss = criterion((output), target_output)
+
+    if args.optim_type == 'ldni':
+      rnn.register_loss(loss)
 
     loss.backward()
 

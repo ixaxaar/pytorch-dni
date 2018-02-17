@@ -6,6 +6,7 @@ from .dni import DNI
 from .cdni import CDNI
 from .mirror import Mirror
 from .global_inhibition import GlobalInhibition
+from .ldni import LDNI
 from .dni_monkeypatch import _DNI
 
 from .dni_nets import DNINetwork
