@@ -55,7 +55,8 @@ class LinearSigmoidDNI(DNINetwork):
       output = F.relu(layer(output))
     output = self.final(output)
 
-    output = output.view(input.size())
+    if len(input.size()) > 2:
+      output = output.view(b, t, -1)
 
     return output, None
 
@@ -108,7 +109,8 @@ class LinearBatchNormDNI(DNINetwork):
       output = F.relu(layer(output))
     output = self.final(output)
 
-    output = output.view(input.size())
+    if len(input.size()) > 2:
+      output = output.view(b, t, -1)
 
     return output, None
 
@@ -159,7 +161,8 @@ class LinearDNI(DNINetwork):
       output = F.relu(layer(output))
     output = self.final(output)
 
-    output = output.view(input.size())
+    if len(input.size()) > 2:
+      output = output.view(b, t, -1)
 
     return output, None
 
