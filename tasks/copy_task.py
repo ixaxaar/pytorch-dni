@@ -189,7 +189,7 @@ if __name__ == '__main__':
 
   last_save_losses = []
 
-  rnn = Mirror(rnn, mirror_optim=args.optim, mirror_lr=args.lr, λ=0)
+  rnn = Mirror(rnn)
   print(rnn)
 
   if args.optim == 'adam':

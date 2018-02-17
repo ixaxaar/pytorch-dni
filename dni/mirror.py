@@ -17,44 +17,24 @@ class Mirror(Altprop):
   def __init__(
       self,
       network,
-      optim=None,
-      mirror_optim='adam',
-      mirror_lr=0.001,
-      λ=0.0,
       recursive=True,
       gpu_id=-1
   ):
     super(Mirror, self).__init__()
 
-    # the network and optimizer for the entire network
+    # the parent network
     self.network = network
-    self.network_optimizer = \
-        optim if optim is not None else self.get_optim(self.network.parameters(), mirror_optim, mirror_lr)
-
-    # optim params for the mirror networks' optimizers
-    self.mirror_optim = mirror_optim if optim is None else optim.__class__.__name__.lower()
-    self.lr = mirror_lr if optim is None else optim.defaults['lr']
-    # criterion for the grad estimator loss
-    # optim params for the network's per-layer optimizers
-    self.optim = str(self.network_optimizer.__class__.__name__).lower()
 
     # mirror gradient networks (for each module in network)
     self.mirror_networks = {}
     self.mirror_networks_hx = {}
-
-    # lock that prevents the backward and forward hooks to act respectively
-    self.backward_lock = False
-    self.synthetic_grad_input = {}
-
-    self.λ = λ
 
     # whether we should apply triggers recursively
     self.recursive = recursive
 
     self.gpu_id = gpu_id
 
-    log.info('Creating mirror of network \n' + str(self.network) + '\n with optimizer ' +
-             self.optim + ', lr ' + str(self.lr))
+    log.info('Creating mirror of network \n' + str(self.network))
 
     # Create mirror nets for every leaf module
     if self.recursive:
