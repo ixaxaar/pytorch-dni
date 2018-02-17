@@ -13,23 +13,24 @@ from .monoids import *
 import copy
 
 
-class Mirror(Altprop):
+class GlobalInhibition(Altprop):
 
   def __init__(
       self,
       network,
+      inhibitory_network,
       recursive=True,
       op=subM,
       gpu_id=-1
   ):
-    super(Mirror, self).__init__()
+    super(GlobalInhibition, self).__init__()
 
     # the parent network
     self.network = network
 
     # mirror gradient networks (for each module in network)
-    self.mirror_networks = {}
-    self.mirror_networks_hx = {}
+    self.inhibitory_network = inhibitory_network
+    self.inhibitory_network_hx = None
 
     # whether we should apply triggers recursively
     self.recursive = recursive
@@ -37,20 +38,12 @@ class Mirror(Altprop):
 
     self.gpu_id = gpu_id
 
-    log.info('Creating mirror of network \n' + str(self.network))
-
-    # Create mirror nets for every leaf module
-    if self.recursive:
-      for module in for_all_leaves(self.network):
-        self.__create_mirror_nets(module)
-    else:
-      self.__create_mirror_nets(self.network)
-
-    # register backward hooks to all leaf modules in the network
+    # monkeypatch forward hooks to all leaf modules in the network
     monkeypatch_forwards(self.network, self._forward_update_hook)
     log.debug(self.network)
     log.debug("=============== Hooks registered =====================")
 
+    self.initial_input = None
     # Set model's methods as our own
     method_list = [m for m in dir(self.network)
                    if callable(getattr(self.network, m)) and not m.startswith("__")
@@ -58,35 +51,28 @@ class Mirror(Altprop):
     # for m in method_list:
     #   setattr(self, m, getattr(self.network, m))
 
-  def __create_mirror_nets(self, module):
-    log.debug('Creating mirror net for ' + str(module))
-    # the mirror network
-    self.mirror_networks[id(module)] = copy.deepcopy(module)
-    setattr(self, 'MIRROR_' + module.__class__.__name__, self.mirror_networks[id(module)])
-    log.debug('Created mirror net: \n' + str(self.mirror_networks[id(module)]))
-
-    self.mirror_networks_hx[id(module)] = None
-
-    if self.gpu_id != -1:
-      self.mirror_networks[id(module)] = self.mirror_networks[id(module)].cuda(self.gpu_id)
-
   def _forward_update_hook(self, forward):
     def hook(*input, **kwargs):
       module = forward.__self__
 
       log.debug('Forward called for ' + str(module))
+      if self.initial_input is None:
+        self.initial_input = input
+
       # forward through the parent (excitatory) net
       excitatory = forward(*input, **kwargs)
       e = format(excitatory, module)
 
-      # forward through the mirror (inhibitory) net
-      hx = self.mirror_networks_hx[id(module)]
-      if type(input) is tuple and len(input) == 2:
-        input = (input[0], hx)
-      inhibitory = self.mirror_networks[id(module)](*input, **kwargs)
-      if type(input) is tuple and len(input) == 2:
-        self.mirror_networks_hx[id(module)] = detach_all(inhibitory[1])
-      i = format(inhibitory, module)
+      # forward through the global inhibitory net
+      hx = self.inhibitory_network_hx
+      if type(self.initial_input) is tuple and len(self.initial_input) == 2:
+        iinput = (self.initial_input[0], hx)
+      else:
+        iinput = self.initial_input
+      inhibitory = self.inhibitory_network(*iinput, **kwargs)
+      if type(self.initial_input) is tuple and len(self.initial_input) == 2:
+        self.inhibitory_network_hx = detach_all(inhibitory[1])
+      i = self.inhibitory_network.output(inhibitory)
 
       if type(excitatory) is tuple:
         excitatory = list(excitatory)
@@ -105,6 +91,7 @@ class Mirror(Altprop):
 
   def forward(self, *args, **kwargs):
     log.debug("=============== Forward pass starting =====================")
+    self.initial_input = None
 
     ret = self.network(*args, **kwargs)
     log.debug("=============== Forward pass done =====================")
@@ -118,6 +105,6 @@ class Mirror(Altprop):
 
   def cuda(self, device_id=0):
     self.network.cuda(device_id)
-    self.mirror_networks = { k: v.cuda(device_id) for k,v in self.mirror_networks.items()}
+    self.inhibitory_network = self.inhibitory_network.cuda(device_id)
     self.gpu_id = device_id
     return self
