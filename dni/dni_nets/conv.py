@@ -43,7 +43,8 @@ class Conv2dDNI(DNINetwork):
                                self.dilation,
                                self.stride) if padding == 'SAME' else padding
 
-    self.net = [self.layer(self.convolutions, self.convolutions)
+    self.net = [self.layer(self.convolutions[0], self.convolutions[1]) if type(self.convolutions) is tuple else
+                self.layer(self.convolutions, self.convolutions)
                 for l in range(self.num_layers)]
 
     # bind layers to this class (so that they're searchable by pytorch)
@@ -75,3 +76,6 @@ class Conv2dDNI(DNINetwork):
 
     output = F.avg_pool2d(self.final(output), 2)
     return output, None
+
+
+# class

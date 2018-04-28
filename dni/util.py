@@ -15,6 +15,8 @@ from collections import OrderedDict
 from math import floor
 
 
+δ = 1e-6
+
 log = logging.getLogger('dni')
 log.setLevel(logging.INFO)
 # create file handler which logs even debug messages
@@ -72,12 +74,16 @@ def is_leaf(module):
 
   return l == 0 and p > 0
 
-def monkeypatch_forwards(net, callback, *args, **kwargs):
+def for_all_leaves(net):
   for module in net.modules():
     if is_leaf(module):
-      log.debug('Monkeypatching forward for ' + str(module))
-      cb = callback(module.forward, *args, **kwargs)
-      setattr(module, 'forward', cb)
+      yield module
+
+def monkeypatch_forwards(net, callback, *args, **kwargs):
+  for module in for_all_leaves(net):
+    log.debug('Monkeypatching forward for ' + str(module))
+    cb = callback(module.forward, *args, **kwargs)
+    setattr(module, 'forward', cb)
 
 def as_type(var1, ref):
   dtype = ref.data.__class__.__name__
@@ -121,4 +127,11 @@ def check_if_gradients_propagate(model):
 def get_padding(input_dim, kernel_size, dilation, stride):
   padding = floor((input_dim * stride + (kernel_size - 1) * dilation + 1)/2)
   return padding
+
+
+def cuda(x, grad=False, gpu_id=-1):
+  if gpu_id == -1:
+    return Variable(x, requires_grad=grad)
+  else:
+    return Variable(x.pin_memory(), requires_grad=grad).cuda(gpu_id, async=True)
 

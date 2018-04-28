@@ -25,7 +25,7 @@ from torch.nn.utils import clip_grad_norm
 from dnc import DNC
 from dnc import SDNC
 from dnc import SAM
-from test_lstm import LSTMModel
+from test_lstm import *
 from dni import *
 from dni import _DNI
 from dnc.util import *
@@ -42,6 +42,10 @@ parser.add_argument('-nhlayer', type=int, default=2, help='number of hidden laye
 parser.add_argument('-lr', type=float, default=1e-4, help='initial learning rate')
 parser.add_argument('-optim', type=str, default='adam', help='learning rule, supports adam|rmsprop')
 parser.add_argument('-clip', type=float, default=50, help='gradient clipping')
+
+parser.add_argument('-optim_type', type=str, default='dni',
+  help='altprop type: can be "dni", "mirror", "global_inhibition"')
+
 
 parser.add_argument('-batch_size', type=int, default=100, metavar='N', help='batch size')
 parser.add_argument('-mem_size', type=int, default=20, help='memory dimension')
@@ -185,25 +189,37 @@ if __name__ == '__main__':
   else:
     raise Exception('Not recognized type of memory')
 
+  debug_enabled = hasattr(rnn, 'debug') and rnn.debug
   # register_nan_checks(rnn)
 
   last_save_losses = []
 
+  if args.optim_type == 'global_inhibition':
+    rnn = GlobalInhibition(rnn, inhibitory_network=InhibitoryModel(args.input_size, args.nhid, 2, 0.2))
+  elif args.optim_type == 'mirror':
+    rnn = Mirror(rnn)
+  elif args.optim_type == 'ldni':
+    rnn = LDNI(rnn, grad_network=LinearDNI, hidden_size=args.nhid, optim_type=args.optim, lr=args.lr)
+  elif args.optim_type == 'dni':
+    rnn = DNI(rnn, hidden_size=args.nhid, grad_optim=args.optim, grad_lr=args.lr, dni_network=LinearDNI, λ=0)
+  else:
+    raise Exception("Specify correct optim_type")
+  print(rnn)
+
   if args.optim == 'adam':
-    optimizer = optim.Adam(rnn.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
+    optimizer = optim.Adam(rnn.last_layer.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
   elif args.optim == 'adamax':
-    optimizer = optim.Adamax(rnn.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
+    optimizer = optim.Adamax(rnn.last_layer.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])  # 0.0001
   elif args.optim == 'rmsprop':
-    optimizer = optim.RMSprop(rnn.parameters(), lr=args.lr, momentum=0.9, eps=1e-10)  # 0.0001
+    optimizer = optim.RMSprop(rnn.last_layer.parameters(), lr=args.lr, momentum=0.9, eps=1e-10)  # 0.0001
   elif args.optim == 'sgd':
-    optimizer = optim.SGD(rnn.parameters(), lr=args.lr)  # 0.01
+    optimizer = optim.SGD(rnn.last_layer.parameters(), lr=args.lr)  # 0.01
   elif args.optim == 'adagrad':
-    optimizer = optim.Adagrad(rnn.parameters(), lr=args.lr)
+    optimizer = optim.Adagrad(rnn.last_layer.parameters(), lr=args.lr)
   elif args.optim == 'adadelta':
-    optimizer = optim.Adadelta(rnn.parameters(), lr=args.lr)
+    optimizer = optim.Adadelta(rnn.last_layer.parameters(), lr=args.lr)
 
   debug_enabled = hasattr(rnn, 'debug') and rnn.debug
-  rnn = DNI(rnn, hidden_size=args.nhid, optim=optimizer, dni_network=LinearDNI, λ=0)
 
   if args.cuda != -1:
     rnn = rnn.cuda(args.cuda)
@@ -224,10 +240,14 @@ if __name__ == '__main__':
 
     loss = criterion((output), target_output)
 
+    if args.optim_type == 'ldni':
+      rnn.register_loss(loss)
+
     loss.backward()
 
     T.nn.utils.clip_grad_norm(rnn.parameters(), args.clip)
-    # optimizer.step()
+    if args.optim_type != 'dni':
+      optimizer.step()
     loss_value = loss.data[0]
 
     summarize = (epoch % summarize_freq == 0)

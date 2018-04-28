@@ -26,6 +26,7 @@ class DNI(Altprop):
       hidden_size=None,
       λ=0.5,
       recursive=True,
+      skip_last_layer=True,
       gpu_id=-1
   ):
     super(DNI, self).__init__()
@@ -62,13 +63,16 @@ class DNI(Altprop):
 
     # whether we should apply triggers recursively
     self.recursive = recursive
+    self.skip_last_layer = skip_last_layer
 
     self.gpu_id = gpu_id
     self.ctr = 0
     self.cumulative_grad_losses = 0
 
     # register backward hooks to all leaf modules in the network
-    self.register_backward(self.network, self._backward_update_hook, recursive=self.recursive)
+    self.last_layer = self.register_backward(self.network, self._backward_update_hook,
+                           recursive=self.recursive,
+                           skip_last_layer=self.skip_last_layer)
     log.debug(self.network)
     log.debug("=============== Hooks registered =====================")
 
@@ -126,7 +130,8 @@ class DNI(Altprop):
       if id(module) not in list(self.dni_networks.keys()):
         self.__create_backward_dni_nets(module, output)
 
-      self.dni_networks_data[id(module)]['input'].append(detach_all(input))
+      if self.training:
+        self.dni_networks_data[id(module)]['input'].append(detach_all(input))
 
     return hook
 
@@ -135,6 +140,9 @@ class DNI(Altprop):
       if id(module) == id(m):
         self.synthetic_grad_input[id(module)] = detach_all(i)
     return hook
+
+  def __format(self, outputs, module):
+    return format(outputs, module)
 
   def _backward_update_hook(self):
     def hook(module, grad_input, grad_output):
@@ -159,16 +167,21 @@ class DNI(Altprop):
 
       # forward pass through the module alone
       outputs = module(*input)
-      output = format(outputs, module)
+      output = self.__format(outputs, module)
 
       # pass through the DNI net
       hx = self.__get_dni_hidden(module)
       predicted_grad, hx = \
           self.dni_networks[id(module)](output.detach(), hx if hx is None else detach_all(hx))
+      self.dni_networks_data[id(module)]['hidden'] = hx
 
       # BP(λ)
       predicted_grad = as_type(predicted_grad, grad_output[0])
-      grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
+      if self.λ > 0:
+        grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
+      else:
+        grad = predicted_grad
+
       self.backward_lock = True
       output.backward(grad.detach(), retain_graph=True)
       self.backward_lock = False
@@ -211,19 +224,16 @@ class DNI(Altprop):
     for i, data in self.dni_networks_data.items():
       data['input'] = []
 
-    self.register_forward(self.network, self._forward_update_hook, recursive=self.recursive)
+    self.register_forward(self.network, self._forward_update_hook,
+                          recursive=self.recursive,
+                          skip_last_layer=self.skip_last_layer)
     ret = self.network(*args, **kwargs)
     self.unregister_forward()
     log.debug("=============== Forward pass done =====================")
     return ret
 
-  def backward(self, *args, **kwargs):
-    log.debug("=============== Backward pass starting =====================")
-    ret = self.network.backward(*args, **kwargs)
-    log.debug("=============== Backward pass done =====================")
-    return ret
-
-  def cuda(self, device=0):
-    self.network.cuda(device_id)
+  def cuda(self, device_id=0):
+    self.network = self.network.cuda(device_id)
+    self.dni_networks = { k: v.cuda(device_id) for k,v in self.dni_networks.items()}
     self.gpu_id = device_id
     return self
