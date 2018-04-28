@@ -1,5 +1,4 @@
 '''Train CIFAR10 with PyTorch.'''
-from __future__ import print_function
 
 import torch
 import torch.nn as nn
@@ -17,10 +16,16 @@ from models import *
 from utils import progress_bar
 from torch.autograd import Variable
 
+from dni import *
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
-parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
+parser.add_argument('-resume', '-r', action='store_true', help='resume from checkpoint')
+parser.add_argument('-nhid', type=int, default=64, help='number of hidden units of the inner nn')
+parser.add_argument('-lr', type=float, default=1e-4, help='initial learning rate')
+parser.add_argument('-optim', type=str, default='adam', help='learning rule, supports adam|rmsprop')
+parser.add_argument('-batch_size', type=int, default=64, help='number of batches')
+parser.add_argument('-network', type=str, default='mobilenetv2', help='type of network, can be \
+    vgg,resnet18,preactresnet18,googlenet,densenet121,resnext29_2x64d,mobilenet,mobilenetv2,dpn92,shufflenetg2,senet18')
 args = parser.parse_args()
 
 use_cuda = torch.cuda.is_available()
@@ -42,10 +47,10 @@ transform_test = transforms.Compose([
 ])
 
 trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=2)
 
 testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
-testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
+testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
@@ -60,25 +65,38 @@ if args.resume:
     start_epoch = checkpoint['epoch']
 else:
     print('==> Building model..')
-    # net = VGG('VGG19')
-    # net = ResNet18()
-    # net = PreActResNet18()
-    # net = GoogLeNet()
-    # net = DenseNet121()
-    # net = ResNeXt29_2x64d()
-    # net = MobileNet()
-    net = MobileNetV2()
-    # net = DPN92()
-    # net = ShuffleNetG2()
-    # net = SENet18()
+    if args.network == 'vgg':
+        net = VGG('VGG19')
+    if args.network == 'resnet18':
+        net = ResNet18()
+    if args.network == 'preactresnet18':
+        net = PreActResNet18()
+    if args.network == 'googlenet':
+        net = GoogLeNet()
+    if args.network == 'densenet121':
+        net = DenseNet121()
+    if args.network == 'resnext29_2x64d':
+        net = ResNeXt29_2x64d()
+    if args.network == 'mobilenet':
+        net = MobileNet()
+    if args.network == 'mobilenetv2':
+        net = MobileNetV2()
+    if args.network == 'dpn92':
+        net = DPN92()
+    if args.network == 'shufflenetg2':
+        net = ShuffleNetG2()
+    if args.network == 'senet18':
+        net = SENet18()
+
+    net = DNI(net, hidden_size=args.nhid, grad_optim=args.optim, grad_lr=args.lr, dni_network=LinearDNI, λ=0)
 
 if use_cuda:
     net.cuda()
-    net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
+    # net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
     cudnn.benchmark = True
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+optimizer = optim.Adam(net.last_layer.parameters(), lr=args.lr)
 
 # Training
 def train(epoch):
@@ -131,7 +149,7 @@ def test(epoch):
     if acc > best_acc:
         print('Saving..')
         state = {
-            'net': net.module if use_cuda else net,
+            'net': net,
             'acc': acc,
             'epoch': epoch,
         }
