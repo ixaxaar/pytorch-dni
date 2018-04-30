@@ -27,6 +27,7 @@ class DNI(Altprop):
       λ=0.5,
       recursive=True,
       skip_last_layer=True,
+      format_fn=None,
       gpu_id=-1
   ):
     super(DNI, self).__init__()
@@ -68,6 +69,7 @@ class DNI(Altprop):
     self.gpu_id = gpu_id
     self.ctr = 0
     self.cumulative_grad_losses = 0
+    self.format = format_fn
 
     # register backward hooks to all leaf modules in the network
     self.last_layer = self.register_backward(self.network, self._backward_update_hook,
@@ -142,7 +144,7 @@ class DNI(Altprop):
     return hook
 
   def __format(self, outputs, module):
-    return format(outputs, module)
+    return format(outputs, module) if self.format is None else self.format(outputs)
 
   def _backward_update_hook(self):
     def hook(module, grad_input, grad_output):
