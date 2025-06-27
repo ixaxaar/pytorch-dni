@@ -11,7 +11,7 @@ import time
 import functools
 sys.path.insert(0, '.')
 
-from dnc import SAM
+from dni import *
 from dni.util import detach_all
 
 import torch
@@ -114,7 +114,7 @@ def test_one_big_function():
               dni_params={'convolutions': self.filters,
                           'kernel_size': kernel_size,
                           'num_layers': 2, 'padding': 'SAME'},
-              λ=getattr(args, 'lambda'),
+              λ=args['lambda'],
               grad_optim='adam',
               grad_lr=args['lr'],
               gpu_id=0 if args['cuda'] else -1,
@@ -168,7 +168,7 @@ def test_one_big_function():
       if batch_idx % args['log_interval'] == 0:
         print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
             epoch, batch_idx * len(data), len(train_loader.dataset),
-            100. * batch_idx / len(train_loader), loss.data[0]))
+            100. * batch_idx / len(train_loader), loss.item()))
         return
 
   train(1)

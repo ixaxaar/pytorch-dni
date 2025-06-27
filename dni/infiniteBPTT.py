@@ -13,7 +13,7 @@ from .dni_nets import LinearDNI
 import copy
 
 
-class DNI(Altprop):
+class InfiniteBPTT(Altprop):
 
   def __init__(
       self,
@@ -30,7 +30,7 @@ class DNI(Altprop):
       format_fn=None,
       gpu_id=-1
   ):
-    super(DNI, self).__init__()
+    super(InfiniteBPTT, self).__init__()
 
     # the DNI network generator
     self.dni_network = LinearDNI if dni_network is None else dni_network
@@ -70,10 +70,6 @@ class DNI(Altprop):
     self.ctr = 0
     self.cumulative_grad_losses = 0
     self.format = format_fn
-    
-    # Store pending optimizer steps to avoid in-place modification during backward
-    self.pending_dni_steps = []
-    self.pending_module_steps = []
 
     # register backward hooks to all leaf modules in the network
     self.last_layer = self.register_backward(self.network, self._backward_update_hook,
@@ -165,7 +161,6 @@ class DNI(Altprop):
       handle = module.register_backward_hook(self.__save_synthetic_gradient(module, grad_input))
 
       # self.dni_networks_data[id(module)]['optim'].zero_grad()
-      module.zero_grad()
       self.dni_networks_data[id(module)]['grad_optim'].zero_grad()
 
       try:
@@ -173,6 +168,10 @@ class DNI(Altprop):
       except IndexError:
         log.warning('Trying to search for non existent output ' + str(module))
         return
+
+      # forward pass through the module alone
+      # outputs = module(*input)
+      # output = self.__format(outputs, module)
 
       # pass through the DNI net
       hx = self.__get_dni_hidden(module)
@@ -183,17 +182,11 @@ class DNI(Altprop):
       # BP(λ)
       predicted_grad = as_type(predicted_grad, grad_output[0])
       if self.λ == -1:
-        grad = grad_output[0] + detach_all(predicted_grad)
+        grad = grad_output[0]
       elif self.λ > 0:
-        grad = (1 - self.λ) * detach_all(predicted_grad) + self.λ * grad_output[0]
+        grad = (1 - self.λ) * predicted_grad + self.λ * grad_output[0]
       else:
         grad = predicted_grad
-
-      # print(module)
-      # print([ x.grad.shape for x in module.parameters() ])
-      # print("------------------------------------")
-      # print(grad.shape, '----\n', [x.shape for x in grad_input], '----\n',
-      #   [ x.shape for x in module.parameters() ])
 
       self.backward_lock = True
       output.backward(grad.detach(), retain_graph=True)
@@ -201,35 +194,33 @@ class DNI(Altprop):
       handle.remove()
 
       # loss is MSE of the estimated gradient (by the DNI network) and the actual gradient
-      # Use the original predicted_grad (not detached) for loss computation
-      if predicted_grad.requires_grad:
-        loss = self.grad_loss(predicted_grad, grad_output[0].detach())
-        # backprop and update the DNI net
-        loss.backward()
-        
-        # track gradient losses
-        self.ctr += 1
-        self.cumulative_grad_losses = self.cumulative_grad_losses + loss.item()
-        if self.ctr % 1000 == 0:
-          log.info('Average gradient loss last 1k steps: ' + str(self.cumulative_grad_losses / self.ctr))
-          self.cumulative_grad_losses = 0
-          self.ctr = 0
+      loss = self.grad_loss(predicted_grad, grad_output[0].detach())
 
-      # Store optimizer steps to be executed after backward pass completes
-      self.pending_module_steps.append(self.dni_networks_data[id(module)]['optim'])
-      self.pending_dni_steps.append(self.dni_networks_data[id(module)]['grad_optim'])
+      # backprop and update the DNI net
+      loss.backward()
+
+      # track gradient losses
+      self.ctr += 1
+      self.cumulative_grad_losses = self.cumulative_grad_losses + loss.item()
+      if self.ctr % 1000 == 0:
+        log.info('Average gradient loss last 1k steps: ' + str(self.cumulative_grad_losses / self.ctr))
+        self.cumulative_grad_losses = 0
+        self.ctr = 0
+
+      # update parameters
+      self.dni_networks_data[id(module)]['optim'].step()
+      self.dni_networks_data[id(module)]['grad_optim'].step()
 
       # (back)propagate the (mixed) synthetic and original gradients
-      is_none = any(x is None for x in grad_input) or \
-              self.synthetic_grad_input[id(module)] is None or \
-              any(x is None for x in self.synthetic_grad_input[id(module)])
-      if is_none:
-        return
-
-      # zipped = [(as_type(s, a), a)
-      #           for s, a in zip(self.synthetic_grad_input[id(module)], grad_input)]
-      # grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach()) for (s, a) in zipped)
-      return self.synthetic_grad_input[id(module)]
+      # if any(x is None for x in grad_input) or \
+      #         any(x is None for x in self.synthetic_grad_input[id(module)]) or \
+      #         self.synthetic_grad_input[id(module)] is None:
+      #   grad_inputs = None
+      # else:
+      #   zipped = [(as_type(s, a), a)
+      #             for s, a in zip(self.synthetic_grad_input[id(module)], grad_input)]
+      #   grad_inputs = tuple(((1 - self.λ) * s) + (self.λ * a.detach()) for (s, a) in zipped)
+      # return grad_inputs
 
     return hook
 
@@ -247,19 +238,9 @@ class DNI(Altprop):
     log.debug("=============== Forward pass done =====================")
     return ret
 
-  def step_optimizers(self):
-    """Execute pending optimizer steps after backward pass is complete"""
-    for optim in self.pending_module_steps:
-      optim.step()
-    for optim in self.pending_dni_steps:
-      optim.step()
-    
-    # Clear pending steps
-    self.pending_module_steps = []
-    self.pending_dni_steps = []
-  
   def cuda(self, device_id=0):
     self.network = self.network.cuda(device_id)
     self.dni_networks = { k: v.cuda(device_id) for k,v in self.dni_networks.items()}
     self.gpu_id = device_id
     return self
+

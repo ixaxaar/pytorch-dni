@@ -94,6 +94,7 @@ model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers
 model = model.cuda() if args.cuda else model
 
 criterion = nn.CrossEntropyLoss()
+opt = torch.optim.Adam(model.parameters(), lr=args.lr, eps=1e-9, betas=[0.9, 0.98])
 
 ###############################################################################
 # Training code
@@ -152,22 +153,28 @@ def train():
         # Starting each batch, we detach the hidden state from how it was previously produced.
         # If we didn't, the model would try backpropagating all the way to start of the dataset.
         hidden = repackage_hidden(hidden)
-        model.zero_grad()
+        opt.zero_grad()
+        # model.zero_grad()
         output, hidden = model(data, hidden)
         loss = criterion(output.view(-1, ntokens), targets)
         loss.backward()
 
+        # Execute DNI optimizer steps
+        if hasattr(model, 'step_optimizers'):
+            model.step_optimizers()
+
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-        torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+        opt.step()
         # for p in model.parameters():
         #     p.data.add_(-lr, p.grad.data)
 
-        total_loss += loss.data[0]
+        total_loss += loss.item()
 
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss / args.log_interval
             elapsed = time.time() - start_time
-            print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
+            print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.5f} | ms/batch {:5.2f} | '
                     'loss {:5.2f} | ppl {:8.2f}'.format(
                 epoch, batch, len(train_data) // args.bptt, lr,
                 elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))

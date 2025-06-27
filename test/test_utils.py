@@ -24,7 +24,7 @@ def generate_data(batch_size, length, size, cuda=-1):
     input_data = input_data.cuda()
     target_output = target_output.cuda()
 
-  return var(input_data), var(target_output)
+  return input_data, target_output
 
 def criterion(predictions, targets):
   return T.mean(

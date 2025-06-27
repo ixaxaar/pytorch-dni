@@ -133,5 +133,5 @@ def cuda(x, grad=False, gpu_id=-1):
   if gpu_id == -1:
     return Variable(x, requires_grad=grad)
   else:
-    return Variable(x.pin_memory(), requires_grad=grad).cuda(gpu_id, async=True)
+    return Variable(x.pin_memory(), requires_grad=grad).cuda(gpu_id, non_blocking=True)
 

@@ -1,4 +1,7 @@
 import torch.nn as nn
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 from dni import *
 from torch.autograd import Variable
 
@@ -24,10 +27,11 @@ class RNNModel(nn.Module):
                                 dni_network=RNNDNI,
                                 hidden_size=nhid,
                                 grad_optim='adam',
-                                grad_lr=0.0001,
+                                grad_lr=0.00001,
                                 recursive=False,
                                 gpu_id=0 if cuda else -1,
-                                format_fn=lambda x: x[0]
+                                format_fn=lambda x: x[0],
+                                λ=-1
                             )
 
         # Optionally tie weights as in:
@@ -46,6 +50,11 @@ class RNNModel(nn.Module):
         self.rnn_type = rnn_type
         self.nhid = nhid
         self.nlayers = nlayers
+
+    def parameters(self):
+        return list(self.encoder.parameters()) + \
+            list(self.rnn.network.parameters()) + \
+            list(self.decoder.parameters())
 
     def init_weights(self):
         initrange = 0.1

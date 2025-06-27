@@ -101,7 +101,7 @@ class Altprop(nn.Module):
       if otype == 'adam':
         optimizer = optim.Adam(parameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])
       elif otype == 'adamax':
-        optimizer = optim.Adamax(selfparameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])
+        optimizer = optim.Adamax(parameters, lr=lr, eps=1e-9, betas=[0.9, 0.98])
       elif otype == 'rmsprop':
         optimizer = optim.RMSprop(parameters, lr=lr, momentum=0.9, eps=1e-10)
       elif otype == 'sgd':
